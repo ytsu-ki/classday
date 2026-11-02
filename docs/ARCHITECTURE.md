@@ -85,7 +85,7 @@ The interface is in English or Simplified Chinese (`src/i18n`).
 - **First paint.** Like the theme, the script in `index.html` sets `lang` from a copy of the last language (`classday.language`) or the phone's, and the start-up text exists in both languages.
 - **Quick capture** reads English and Chinese phrases regardless of the setting. Chinese has no spaces, so `quickParse.zh-Hans.ts` peels recognised phrases (dates, times, durations, repeats, priority) off the end of a word before the usual end-of-line reading; whatever stays in the title keeps its original spacing.
 - **Android.** A choice made in the app goes to `AppCompatDelegate.setApplicationLocales` through `AppearancePlugin`. On Android 13+ Android keeps it: the app is listed in the phone's per-app language settings (`res/xml/locales_config.xml`), and when the app starts or returns it adopts a language changed there. Older versions keep no per-app language, so the app passes its choice to them at every start. The activity handles locale changes itself, so switching never reloads the page.
-- **Text audit.** `npm run audit:english` allows Chinese only in files whose names contain `zh-Hans`, in Android's `values-zh-rCN` resources, and on `index.html` lines marked `lang="zh-Hans"`; code, comments, docs and the English catalog stay English.
+- **Text audit.** `npm run audit:english` allows Chinese only in files whose names contain `zh-Hans`, in Android's `values-zh-rCN` resources, on `index.html` lines marked `lang="zh-Hans"`, and in the Chinese half of `README.md` between `<!-- zh-Hans -->` and `<!-- /zh-Hans -->` (an unclosed section fails); code, comments, the rest of the docs and the English catalog stay English.
 
 ## Accent colors
 
