@@ -1,0 +1,44 @@
+{
+  "name": "classday",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "An offline Android planner that helps university students find a realistic daily rhythm.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "audit:english": "node scripts/audit-english.mjs",
+    "check": "npm run typecheck && npm test && npm run audit:english",
+    "android:sync": "npm run build && cap sync android",
+    "android:debug": "npm run android:sync && node scripts/android-apk.mjs debug",
+    "android:release": "npm run android:sync && node scripts/android-signing.mjs && node scripts/android-apk.mjs release",
+    "android:test": "node scripts/android-apk.mjs test",
+    "android:lint": "node scripts/android-apk.mjs lint"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/local-notifications": "8.3.1",
+    "@fontsource-variable/figtree": "5.2.8",
+    "ical.js": "2.2.1",
+    "pdfjs-dist": "6.4.299",
+    "preact": "10.27.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3",
+    "@preact/preset-vite": "2.10.2",
+    "@testing-library/preact": "3.2.4",
+    "jsdom": "26.1.0",
+    "typescript": "5.9.2",
+    "vite": "7.1.5",
+    "vitest": "3.2.4"
+  }
+}

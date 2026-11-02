@@ -1,0 +1,20 @@
+{
+  "appId": "cn.liubai.planner",
+  "appName": "Classday",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false,
+    "minWebViewVersion": 105
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DEFAULT",
+      "initialViewportFitValueHint": "cover"
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_reminder",
+      "iconColor": "#3D50FA"
+    }
+  }
+}

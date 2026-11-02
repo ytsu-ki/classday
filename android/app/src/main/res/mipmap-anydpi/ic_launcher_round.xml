@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 7.x: a full icon drawn as one vector. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" android:width="108dp" android:height="108dp" android:viewportWidth="512" android:viewportHeight="512">
+    <path android:pathData="M112,0H400Q512,0 512,112V400Q512,512 400,512H112Q0,512 0,400V112Q0,0 112,0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="512" android:endY="512" android:startColor="#3D5AFE" android:endColor="#7C6CFF" />
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#FFFFFF" android:pathData="M188,148H324A40,40 0,0 1,364,188V344A40,40 0,0 1,324,384H188A40,40 0,0 1,148,344V188A40,40 0,0 1,188,148Z" />
+    <path android:fillColor="#2A36C9" android:pathData="M188,148H324A40,40 0,0 1,364,188V212H148V188A40,40 0,0 1,188,148Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M212,120A14,14 0,0 1,226,134V170A14,14 0,0 1,198,170V134A14,14 0,0 1,212,120Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M300,120A14,14 0,0 1,314,134V170A14,14 0,0 1,286,170V134A14,14 0,0 1,300,120Z" />
+    <path android:fillColor="#3D5AFE" android:pathData="M198,240H314A14,14 0,0 1,314,268H198A14,14 0,0 1,198,240Z" />
+    <path android:fillColor="#3D5AFE" android:pathData="M198,288H266A14,14 0,0 1,266,316H198A14,14 0,0 1,198,288Z" />
+    <path android:strokeColor="#3D5AFE" android:strokeWidth="26" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M282,338L302,358L334,322" />
+</vector>

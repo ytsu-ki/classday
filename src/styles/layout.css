@@ -1,0 +1,219 @@
+/* App shell: bottom navigation on phones, a side rail on wide screens. */
+.app {
+  min-height: 100vh;
+}
+
+.main {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding:
+    calc(var(--safe-top) + var(--space-5))
+    calc(var(--safe-right) + var(--space-4))
+    calc(var(--safe-bottom) + var(--nav-height) + var(--space-8))
+    calc(var(--safe-left) + var(--space-4));
+  outline: none;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  animation: screen-in var(--medium) var(--ease);
+}
+
+@keyframes screen-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.page-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.page-title:has(> .back-btn) {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--accent-ink);
+  letter-spacing: 0.01em;
+}
+
+.back-btn {
+  margin-left: -10px;
+  margin-bottom: 2px;
+}
+
+/* Navigation */
+.nav {
+  position: fixed;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px rgb(16 24 40 / 4%);
+}
+
+.nav-brand {
+  display: none;
+}
+
+.nav ul {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav button {
+  position: relative;
+  width: 100%;
+  height: var(--nav-height);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  transition: color var(--fast) var(--ease);
+}
+
+.nav button .icon {
+  padding: 3px 14px;
+  width: 52px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  transition: background var(--fast) var(--ease);
+}
+
+.nav button.is-active {
+  color: var(--accent-ink);
+}
+
+.nav button.is-active .icon {
+  background: var(--accent-soft);
+}
+
+.nav-alert {
+  position: absolute;
+  top: 10px;
+  left: calc(50% + 12px);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* Wide screens: tablets, foldables and the desktop preview */
+@media (min-width: 900px) {
+  .main {
+    max-width: calc(var(--content-max) + var(--rail-width));
+    padding:
+      calc(var(--safe-top) + var(--space-8))
+      calc(var(--safe-right) + var(--space-10))
+      var(--space-10)
+      calc(var(--safe-left) + var(--rail-width) + var(--space-10));
+  }
+
+  .nav {
+    top: 0;
+    right: auto;
+    width: var(--rail-width);
+    padding: calc(var(--safe-top) + var(--space-6)) var(--space-3) var(--space-6) calc(var(--safe-left) + var(--space-3));
+    border-top: 0;
+    border-right: 1px solid var(--line);
+    box-shadow: none;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 var(--space-3);
+    font-size: var(--fs-md);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .nav-brand .brand-mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+  }
+
+  .nav ul {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+  }
+
+  .nav-settings {
+    margin-top: auto;
+  }
+
+  .nav button {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    height: 46px;
+    padding: 0 var(--space-3);
+    border-radius: 12px;
+    font-size: var(--fs-base);
+  }
+
+  .nav button .icon {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: none !important;
+  }
+
+  .nav button:hover {
+    background: var(--fill);
+    color: var(--text);
+  }
+
+  .nav button.is-active {
+    background: var(--accent-soft);
+  }
+
+  .nav-alert {
+    position: static;
+    margin-left: auto;
+  }
+}

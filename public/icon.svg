@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Classday</title>
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3d5afe"/>
+      <stop offset="1" stop-color="#7c6cff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#brand)"/>
+  <!-- A calendar page: two classes and a finished to-do. -->
+  <rect x="148" y="148" width="216" height="236" rx="40" fill="#ffffff"/>
+  <path d="M188 148H324A40 40 0 0 1 364 188V212H148V188A40 40 0 0 1 188 148Z" fill="#2a36c9"/>
+  <rect x="198" y="120" width="28" height="64" rx="14" fill="#ffffff"/>
+  <rect x="286" y="120" width="28" height="64" rx="14" fill="#ffffff"/>
+  <rect x="184" y="240" width="144" height="28" rx="14" fill="#3d5afe"/>
+  <rect x="184" y="288" width="96" height="28" rx="14" fill="#3d5afe"/>
+  <path d="M282 338L302 358L334 322" fill="none" stroke="#3d5afe" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

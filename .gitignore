@@ -1,0 +1,45 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+releases/
+archive/
+*.tar.gz
+*.zip
+*.apk
+*.aab
+
+# Android build output and machine-specific files (more in android/.gitignore)
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# Signing keys and their passwords never belong in the repository
+.android-signing/
+android/signing.properties
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+
+# Personal timetables and planner data: real schedules, student details and backups stay private
+*.pdf
+*.ics
+classday-backup-*.json
+classday-unreadable-*.json
+day-planner-backup-*.json
+
+# Secrets, local tools and editor files
+.env
+.env.*
+.claude/
+.idea/
+.vscode/
+*.log
+.DS_Store

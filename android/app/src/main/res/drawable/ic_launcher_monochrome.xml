@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed icons (Android 13+): the same page as one-color lines and shapes; only the alpha is used. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="512" android:viewportHeight="512">
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="20" android:pathData="M188,158H324A30,30 0,0 1,354,188V344A30,30 0,0 1,324,374H188A30,30 0,0 1,158,344V188A30,30 0,0 1,188,158Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M188,148H324A40,40 0,0 1,364,188V212H148V188A40,40 0,0 1,188,148Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M212,120A14,14 0,0 1,226,134V170A14,14 0,0 1,198,170V134A14,14 0,0 1,212,120Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M300,120A14,14 0,0 1,314,134V170A14,14 0,0 1,286,170V134A14,14 0,0 1,300,120Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M198,240H314A14,14 0,0 1,314,268H198A14,14 0,0 1,198,240Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M198,288H266A14,14 0,0 1,266,316H198A14,14 0,0 1,198,288Z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="26" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M282,338L302,358L334,322" />
+</vector>

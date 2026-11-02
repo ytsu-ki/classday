@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0E0F12" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="Your class timetable, your day to scale, and your to-dos in order of what matters." />
+    <title>Classday</title>
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <script>
+      // Pick light or dark, and the language, before the first paint. The choices are saved with
+      // the planner data, which loads later; these copies (written by src/ui/theme/mode.ts and
+      // src/ui/language.ts) only avoid a flash.
+      (function () {
+        var mode = null, language = null;
+        try { mode = localStorage.getItem('classday.theme'); language = localStorage.getItem('classday.language'); } catch (e) {}
+        var dark = mode === 'dark' || (mode !== 'light' && !!window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        if (language !== 'en' && language !== 'zh-Hans') {
+          var preferred = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+          language = 'en';
+          for (var i = 0; i < preferred.length; i++) {
+            var tag = String(preferred[i]).toLowerCase();
+            if (tag.indexOf('zh') === 0) { language = 'zh-Hans'; break; }
+            if (tag.indexOf('en') === 0) break;
+          }
+        }
+        document.documentElement.setAttribute('lang', language);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot" role="status">
+        <span class="boot-mark" aria-hidden="true"></span>
+        <p><span lang="en">Opening your planner…</span><span lang="zh-Hans">正在打开你的计划……</span></p>
+      </div>
+    </div>
+    <noscript><p lang="en">Classday needs JavaScript to open your plans.</p><p lang="zh-Hans">课日需要 JavaScript 才能打开你的计划。</p></noscript>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
