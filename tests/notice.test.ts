@@ -14,6 +14,16 @@ describe('reading a pasted notice in English', () => {
     });
   });
 
+  it('reads a changed time and a room written on its own', () => {
+    expect(read('Physics lab moved to Friday 3pm, Room B204')).toEqual({
+      title: 'Physics lab', date: '2026-10-16', start: '15:00', location: 'Room B204', found: ['date', 'time', 'place'],
+    });
+    expect(read('Office hours have been moved to Thu 2pm, rm 3.12')).toMatchObject({ title: 'Office hours', start: '14:00' });
+    expect(read('The quiz is postponed until Monday 10am in Room 101')).toMatchObject({ title: 'quiz', date: '2026-10-19', location: 'Room 101' });
+    // A room with no number is not a place.
+    expect(read('Movie night Friday 8pm, room for everyone').location).toBeUndefined();
+  });
+
   it('reads a longer message with a range and a named hall', () => {
     expect(read('Hi all, the career fair is on Nov 5 from 10am to 2pm at the Main Hall. Please bring your CV.')).toMatchObject({
       title: 'career fair', date: '2026-11-05', start: '10:00', end: '14:00', location: 'Main Hall',

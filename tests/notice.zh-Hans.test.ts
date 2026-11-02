@@ -30,6 +30,18 @@ describe('reading a pasted notice in Chinese', () => {
     });
   });
 
+  it('reads floors and rooms as part of the place, and drops 开 before a meeting', () => {
+    expect(read('明天上午10点在图书馆三楼研讨室开小组讨论')).toEqual({
+      title: '小组讨论', date: '2026-10-14', start: '10:00', location: '图书馆三楼研讨室', found: ['date', 'time', 'place'],
+    });
+    expect(read('周五晚上7点 主楼4层A402开班会')).toMatchObject({ title: '班会', location: '主楼4层A402' });
+    expect(read('周四下午3点 实验楼化学实验室安全培训')).toMatchObject({ title: '安全培训', location: '实验楼化学实验室' });
+    // Words that only start like a meeting or a place stay whole.
+    expect(read('明天下午2点开学典礼')).toMatchObject({ title: '开学典礼' });
+    expect(read('明天下午3点在主楼A101开会')).toMatchObject({ title: '开会', location: '主楼A101' });
+    expect(read('11月5日 14:00 体育馆羽毛球比赛')).toMatchObject({ title: '羽毛球比赛', location: '体育馆' });
+  });
+
   it('understands next week, evenings, half hours and a written-out place', () => {
     expect(read('下周一晚上7点半 图书馆讲座')).toMatchObject({ title: '讲座', date: '2026-10-19', start: '19:30', location: '图书馆' });
     expect(read('【提醒】今晚7点班会，地点：三教302')).toMatchObject({ title: '班会', date: '2026-10-13', start: '19:00', location: '三教302' });

@@ -109,6 +109,8 @@ const ENGLISH: NoticeVocabulary = {
   places: [
     { pattern: /\b(?:location|venue|place|where)\s*:\s*([^\n,;]+)/gi, read: m => m[1] },
     { pattern: /\b(?:in|at)\s+((?:the\s+)?(?:room|rm\.?|lab|building|hall)\s+[A-Za-z]?\d+[\w-]*)/gi, read: m => m[1] },
+    // A room on its own, as in "Friday 3pm, Room B204".
+    { pattern: /\b((?:room|rm\.?)\s*#?\s*[A-Za-z]?\d+[\w-]*)/gi, read: m => m[1] },
     { pattern: /(?:^|\s)@\s*([A-Z][\w-]*(?:\s+[A-Z0-9][\w-]*)*)/g, read: m => m[1] },
     {
       pattern: /\b(?:in|at)\s+((?:the\s+)?[A-Z][\w'-]*(?:\s+(?:[A-Z0-9][\w'-]*|of|the|and)(?=\s+[A-Z0-9]|$|[\s,.;]))*)/g,
@@ -125,7 +127,8 @@ const ENGLISH: NoticeVocabulary = {
   greeting: /^(?:hi|hello|hey|dear)\s+(?:all|everyone|everybody|team|students|class|folks)\b[\s!]*/i,
   joiners: {
     start: /^(?:(?:on|at|in|from|the|a|an|our|is|are|will be|we have|we'll have|there will be|there's|join us for)\s+)+/i,
-    end: /(?:\s+(?:on|at|in|from|is|are|will be|starts|will be held|is held|held|will start))+$/i,
+    // A changed time: "Physics lab moved to Friday" → Physics lab.
+    end: /(?:\s+(?:on|at|in|from|is|are|will be|starts|will be held|is held|held|will start|(?:(?:has|have) been |is |are |was |were |has |have )?(?:moved|changed|rescheduled|postponed|pushed back|pushed|delayed|brought forward)(?: to| until| for)?|now))+$/i,
   },
   weak: null,
 };

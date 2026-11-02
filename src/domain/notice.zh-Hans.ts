@@ -90,17 +90,24 @@ const durations: Rule<number>[] = [
 
 /** Verbs that only say an event is held; the title is what follows them. */
 const HELD = '举行|举办|召开|开展|进行|组织';
+/** Meetings that 开 can come before. */
+const MEETINGS = '小组|班会|组会|例会|大会|讨论|座谈|研讨|年级会|动员会|总结会|主题|专题';
 /** Verbs that can be the event itself, kept for the title: 在302开会 → 开会. */
 const DOING = '开会|集合|集中|上课|见面|报到|签到|领取|考试';
 const STOP = '\\s,;。、!?()';
 
 /**
- * A clause that starts with a place: 体育馆羽毛球比赛, 主楼A101 期中考试. A one-character ending
- * needs two characters before it, so 课堂测验 and 市场营销讲座 stay titles.
+ * A clause that starts with a place: 体育馆羽毛球比赛, 主楼A101 期中考试, 主楼4层A402 班会. A
+ * one-character ending needs two characters before it unless a floor follows, so 课堂测验 and
+ * 市场营销讲座 stay titles.
  */
 const PLACE_WORDS = '报告厅|会议室|教室|实验室|体育馆|图书馆|礼堂|操场|广场|食堂|中心|校区';
 const PLACE_ENDS = '楼|馆|厅|室|场|堂';
 const ROOM = '(?:[A-Za-z]?\\d{2,4}室?)?';
+/** What can follow a building at the start of a clause: a floor, a room number or a named room, as in 图书馆三楼研讨室 or 主楼4层A402. */
+const FLOOR = '[一二三四五六七八九十\\d]{1,2}(?:楼|层|[Ff])';
+const ROOM_NAMES = '研讨室|会议室|自习室|活动室|阅览室|实验室|教室|机房|报告厅|多媒体室';
+const WITHIN = `(?:${FLOOR}|[A-Za-z]?-?\\d{2,4}室?|\\p{Script=Han}{0,3}?(?:${ROOM_NAMES}))*`;
 const places: Rule<string>[] = [
   { pattern: g(`地点[:]\\s*([^\\n,;。]+)`), read: m => m[1] },
   // A place after 在 at the end of a clause: 心理讲座在报告厅.
@@ -116,7 +123,7 @@ const places: Rule<string>[] = [
 ];
 
 const placeHead = new RegExp(
-  `^((?:[\\p{Script=Han}A-Za-z0-9-]{0,10}?(?:${PLACE_WORDS})${ROOM})|(?:[\\p{Script=Han}A-Za-z0-9-]{2,10}?(?:${PLACE_ENDS})${ROOM})|(?:\\p{Script=Han}{0,6}[A-Za-z]{1,2}-?\\d{2,4}))\\s*(?=\\S)`,
+  `^((?:[\\p{Script=Han}A-Za-z0-9-]{0,10}?(?:${PLACE_WORDS})${WITHIN})|(?:[\\p{Script=Han}A-Za-z0-9-]{2,10}?(?:${PLACE_ENDS})${WITHIN})|(?:\\p{Script=Han}{0,6}[A-Za-z]{1,2}-?\\d{2,4}${WITHIN})|(?:\\p{Script=Han}{1,6}?${FLOOR}${WITHIN}))\\s*(?=\\S)`,
   'u',
 );
 
@@ -138,7 +145,8 @@ export const CHINESE: NoticeVocabulary = {
   ],
   greeting: /^(?:@?所有人|@?全体成员|各位同学|全体同学|同学们|大家好|各位)\s*/,
   joiners: {
-    start: new RegExp(`^(?:关于|将于|将|定于|拟于|计划于|于|在|参加|参与|出席|${HELD}|的|是)+`),
+    // 开 before a meeting is the verb, not the event: 开小组讨论 → 小组讨论, while 开会 and 开学典礼 stay.
+    start: new RegExp(`^(?:关于|将于|将|定于|拟于|计划于|于|在|参加|参与|出席|${HELD}|的|是|开(?=${MEETINGS}))+`),
     end: new RegExp(`(?:的通知|通知|改到|改在|改为|调整到|调整为|推迟到|提前到|延期到|${HELD}|的|啦|了)+$`),
   },
   weak: /^(?:集合|集中|报到|签到|见面)$/,
