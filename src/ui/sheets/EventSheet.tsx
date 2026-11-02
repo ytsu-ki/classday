@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { useAppState, useStore, useUi } from '../../app/context';
 import * as act from '../../domain/actions';
+import { LIMITS } from '../../domain/defaults';
 import { eventEnd, parseNotice } from '../../domain/notice';
 import { problemOf } from '../../domain/problems';
 import { daysOf } from '../../domain/schedule';
@@ -20,6 +21,8 @@ import { periodRows } from '../weekGrid';
 /** Monday first, as timetables are read. */
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+/** Characters added in one go that read as a paste rather than typing. */
+const NOTICE_CHUNK = 8;
 
 /** "Mon, Wed, Fri", "every day". */
 export function daysText(days: number[]): string {
@@ -79,21 +82,38 @@ export function EventSheet({ id, day, start: startAt }: { id: string | null; day
     if (next.length) set({ weekday: next.includes(e.weekday) ? e.weekday : next[0], days: next.length > 1 ? next : undefined });
   };
 
-  /** A whole notice pasted into the name fills in what it says, for checking below. */
-  const onPaste = (event: ClipboardEvent) => {
-    const text = event.clipboardData?.getData('text') ?? '';
+  /**
+   * A whole notice put into the name fills in what it says, for checking below. Returns whether the
+   * text was one. A typed-in text needs two clues (a day and a time, say), so finishing a word such
+   * as "tomorrow" never rewrites the name.
+   */
+  const readNotice = (text: string, clues: number): boolean => {
     const notice = parseNotice(text, today);
-    if (!notice.found.length || !notice.title) return;
-    event.preventDefault();
+    if (notice.found.length < clues) return false;
     const start = notice.start ?? e.start;
     set({
-      title: notice.title,
+      title: notice.title.slice(0, LIMITS.title),
       ...(notice.location ? { location: notice.location } : {}),
       ...(notice.date ? { category: 'once', repeat: 'once', date: notice.date, from: notice.date, weekday: dateOf(notice.date).getDay(), days: undefined } : {}),
       ...(notice.start ? { start, end: toClock(eventEnd(toMinutes(start), notice, periods)), allDay: undefined } : {}),
     });
     setEndChosen(Boolean(notice.end || notice.minutes));
     setFound(t.event.foundIn(notice.found.map(f => t.event.noticeFields[f])));
+    return true;
+  };
+  const onPaste = (event: ClipboardEvent) => {
+    if (readNotice(event.clipboardData?.getData('text') ?? '', 1)) event.preventDefault();
+  };
+  // Android keyboards put copied text in through their clipboard suggestion as if it were typed, with
+  // no paste event, so a large insertion in one go is read as well. The field has no maxLength,
+  // which would cut a long notice before it could be read; the name is clamped here instead.
+  const onName = (event: InputEvent) => {
+    const value = (event.target as HTMLInputElement).value;
+    const pasted = /^insertFrom(Paste|Drop)/.test(event.inputType ?? '');
+    const chunk = !event.isComposing && value.length - e.title.length >= NOTICE_CHUNK;
+    if ((pasted || chunk) && readNotice(value, pasted ? 1 : 2)) return;
+    set({ title: value.slice(0, LIMITS.title) });
+    setFound('');
   };
 
   const save = (ev: Event) => {
@@ -140,8 +160,8 @@ export function EventSheet({ id, day, start: startAt }: { id: string | null; day
       {page?.body ?? (
         <form id="event-form" class="form-stack" onSubmit={save} noValidate>
           <Field label={t.common.name} hint={found || (existing ? undefined : t.event.pasteHint)}>
-            {fid => <input id={fid} data-autofocus={!existing || undefined} type="text" maxLength={200} placeholder={t.event.namePlaceholder}
-              value={e.title} onPaste={onPaste} onInput={x => { set({ title: (x.target as HTMLInputElement).value }); setFound(''); }} />}
+            {fid => <input id={fid} data-autofocus={!existing || undefined} type="text" placeholder={t.event.namePlaceholder}
+              value={e.title} onPaste={onPaste} onInput={x => onName(x as InputEvent)} />}
           </Field>
           <Field label={t.event.where}>
             {fid => <input id={fid} type="text" maxLength={500} placeholder={t.common.optional} value={e.location ?? ''} onInput={x => set({ location: (x.target as HTMLInputElement).value })} />}

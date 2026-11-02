@@ -155,6 +155,32 @@ describe('events', () => {
     expect(store.get().data.events[0]).toMatchObject({ title: 'career fair', category: 'once', date: '2026-10-15', start: '10:10', end: '11:50', location: 'Main Hall' });
   });
 
+  it('read a notice the keyboard puts in from its clipboard, without a paste event', () => {
+    const store = mount();
+    addEvent();
+    // Android keyboards insert copied text as one big input, the way Gboard's clipboard suggestion does.
+    const notice = 'Hi all, the career fair is on Oct 15 at 10:10 in the Main Hall. Please bring your CV.';
+    fireEvent.input(screen.getByLabelText('Name'), { target: { value: notice }, inputType: 'insertText' });
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('career fair');
+    expect((screen.getByLabelText('Location') as HTMLInputElement).value).toBe('Main Hall');
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Add' }));
+    expect(store.get().data.events[0]).toMatchObject({ title: 'career fair', date: '2026-10-15', start: '10:10' });
+  });
+
+  it('read a long notice to its end, and leave ordinary names alone', () => {
+    mount();
+    addEvent();
+    const intro = 'Dear students, '.repeat(14);
+    fireEvent.input(screen.getByLabelText('Name'), { target: { value: `${intro}the debate final is on Oct 20 at 19:00 in Hall B.` }, inputType: 'insertFromPaste' });
+    expect(intro.length).toBeGreaterThan(200);
+    expect((screen.getByLabelText('Location') as HTMLInputElement).value).toBe('Hall B');
+    expect(screen.getByRole('button', { name: /^Starts/ }).getAttribute('aria-label')).toBe(`Starts: ${time(19 * 60)}`);
+    // A name typed or picked from suggestions with a single clue in it stays as it is.
+    fireEvent.input(screen.getByLabelText('Name'), { target: { value: '' }, inputType: 'deleteContentBackward' });
+    fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Exam tomorrow' }, inputType: 'insertReplacementText' });
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Exam tomorrow');
+  });
+
   it('can be all day, and show above the hours', () => {
     const store = mount();
     addEvent();
