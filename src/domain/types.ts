@@ -69,6 +69,8 @@ export interface FixedEvent {
   exclusions?: DateKey[];
   location?: string;
   teacher?: string;
+  /** First and last period of an imported class; a new class-times table moves it. */
+  periods?: [number, number];
   /** Present on imported events: identifies the source entry within its import group. */
   sourceKey?: string;
   importGroup?: string;
@@ -76,10 +78,16 @@ export interface FixedEvent {
   importEdited?: boolean;
 }
 
-/** Remembered from the last timetable import: when week one starts and when each period runs. */
+/** When one period of the school day starts and ends. */
+export interface ClassPeriod {
+  start: Clock;
+  end: Clock;
+}
+
+/** When week one starts (empty until a timetable is imported) and the school's class times. */
 export interface SemesterPreferences {
-  firstMonday: DateKey;
-  periods: { start: Clock | ''; end: Clock | '' }[];
+  firstMonday: DateKey | '';
+  periods: ClassPeriod[];
 }
 
 export interface ImportHistory {

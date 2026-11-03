@@ -1,7 +1,8 @@
 import { ACCENTS, LANGUAGES, LIMITS, newItem, THEMES } from './defaults';
+import { periodsInUse, periodsProblem, retimeClasses } from './periods';
 import { ProblemError } from './problems';
 import { nowIso, uid } from './time';
-import type { AccentId, DateKey, FixedEvent, Item, LanguageChoice, Note, PlannerData, Reminders, Settings, ThemeMode } from './types';
+import type { AccentId, ClassPeriod, DateKey, FixedEvent, Item, LanguageChoice, Note, PlannerData, Reminders, Settings, ThemeMode } from './types';
 
 /**
  * State transitions. Each one mutates a draft copy that the store has already cloned,
@@ -96,6 +97,8 @@ export function saveEvent(d: PlannerData, event: FixedEvent) {
   if (!old && d.events.length >= LIMITS.events) throw new ActionError({ code: 'too-many-events' });
   const next = { ...event };
   if (old?.sourceKey) next.importEdited = true;
+  // A class given other times no longer follows its periods.
+  if (next.periods && (next.allDay || next.start !== old?.start || next.end !== old?.end)) delete next.periods;
   d.events = old ? d.events.map(e => (e.id === event.id ? next : e)) : [...d.events, next];
 }
 
@@ -117,6 +120,18 @@ export function cancelOccurrence(d: PlannerData, id: string, day: DateKey) {
 export function restoreOccurrence(d: PlannerData, id: string, day: DateKey) {
   const event = d.events.find(e => e.id === id);
   if (event?.exclusions) event.exclusions = event.exclusions.filter(x => x !== day);
+}
+
+/** Saves the school's class times and moves the classes linked to them; returns how many moved. */
+export function setClassTimes(d: PlannerData, table: ClassPeriod[]): number {
+  const problem = periodsProblem(table, periodsInUse(d));
+  if (problem) throw new ActionError(problem);
+  const semester = d.timetable.semester;
+  const moved = retimeClasses(d, semester?.periods ?? [], table);
+  const firstMonday = semester?.firstMonday ?? '';
+  if (!firstMonday && !table.length) delete d.timetable.semester;
+  else d.timetable.semester = { firstMonday, periods: table.map(p => ({ ...p })) };
+  return moved;
 }
 
 export function setSettings(d: PlannerData, settings: Settings) {

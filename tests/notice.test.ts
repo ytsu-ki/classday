@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { eventEnd, parseNotice } from '../src/domain/notice';
 import { toMinutes } from '../src/domain/time';
 import { periodRows } from '../src/ui/weekGrid';
-import { data, TODAY } from './helpers';
+import { TODAY, withClassTimes } from './helpers';
 
 // TODAY is Tuesday 13 October 2026.
 const read = (text: string) => parseNotice(text, TODAY);
@@ -44,7 +44,7 @@ describe('reading a pasted notice in English', () => {
 });
 
 describe('how long an event lasts', () => {
-  const periods = periodRows(data());
+  const periods = periodRows(withClassTimes());
   const end = (start: string, given: { end?: string; minutes?: number } = {}, p = periods) => eventEnd(toMinutes(start), given, p);
   const at = (clock: string) => toMinutes(clock);
 

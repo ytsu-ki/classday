@@ -1049,6 +1049,11 @@
   color: var(--text-2);
 }
 
+.period-table {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .period-grid {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr);

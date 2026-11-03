@@ -1,7 +1,8 @@
 import { ACCENTS, DEFAULT_ACCENT, defaultReminders, defaultSettings, LANGUAGES, LIMITS, THEMES } from './defaults';
+import { MAX_PERIODS } from './periods';
 import { ProblemError, type Problem } from './problems';
 import { isClock, isDateKey, toMinutes } from './time';
-import type { FixedEvent, ImportHistory, Item, Note, PlannerData, SemesterPreferences, Settings } from './types';
+import type { ClassPeriod, FixedEvent, ImportHistory, Item, Note, PlannerData, SemesterPreferences, Settings } from './types';
 
 /**
  * Rebuilds planner data from untrusted JSON (storage and backups).
@@ -90,6 +91,9 @@ export function normalizeEvent(raw: unknown): FixedEvent | null {
     event.weeks = [...new Set(raw.weeks as number[])].sort((a, b) => a - b);
   }
   if (Array.isArray(raw.exclusions)) event.exclusions = raw.exclusions.filter(isDateKey).slice(0, 400);
+  const periods = raw.periods;
+  if (!allDay && Array.isArray(periods) && periods.length === 2 && isInt(periods[0], 1, MAX_PERIODS) && isInt(periods[1], periods[0], MAX_PERIODS))
+    event.periods = [periods[0], periods[1]];
   for (const key of ['location', 'teacher'] as const) {
     const value = text(raw[key], 500);
     if (value) event[key] = value;
@@ -137,14 +141,20 @@ function normalizeSettings(raw: unknown): Settings {
   return settingsProblem(next) ? base : next;
 }
 
-/** When week one starts and when each period runs. */
+/**
+ * When week one starts and when each period runs. Periods are kept up to the first one that is
+ * unreadable or overlaps the one before, so the numbers of those kept never change.
+ */
 export function normalizeSemester(raw: unknown): SemesterPreferences | undefined {
-  if (!isObj(raw) || !isDateKey(raw.firstMonday)) return undefined;
-  const periods = Array.isArray(raw.periods) && raw.periods.length <= 16
-    ? raw.periods.map(p => isObj(p) && isClock(p.start) && isClock(p.end) && toMinutes(p.end) > toMinutes(p.start)
-      ? { start: p.start, end: p.end } : { start: '' as const, end: '' as const })
-    : [];
-  return { firstMonday: raw.firstMonday, periods };
+  if (!isObj(raw)) return undefined;
+  const firstMonday = isDateKey(raw.firstMonday) ? raw.firstMonday : '';
+  const periods: ClassPeriod[] = [];
+  for (const p of Array.isArray(raw.periods) ? raw.periods.slice(0, MAX_PERIODS) : []) {
+    if (!isObj(p) || !isClock(p.start) || !isClock(p.end) || toMinutes(p.end) <= toMinutes(p.start)) break;
+    if (periods.length && toMinutes(p.start) < toMinutes(periods[periods.length - 1].end)) break;
+    periods.push({ start: p.start, end: p.end });
+  }
+  return firstMonday || periods.length ? { firstMonday, periods } : undefined;
 }
 
 function normalizeHistory(raw: unknown): ImportHistory | undefined {

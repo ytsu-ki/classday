@@ -1,4 +1,5 @@
 import { initialData, newItem } from '../src/domain/defaults';
+import { EXAMPLE_PERIODS } from '../src/domain/periods';
 import type { FixedEvent, Item, PlannerData } from '../src/domain/types';
 
 /** A Tuesday in the middle of a semester. */
@@ -6,6 +7,12 @@ export const TODAY = '2026-10-13';
 
 export function data(extra: Partial<PlannerData> = {}): PlannerData {
   return { ...initialData(), ...extra };
+}
+
+/** The data with the example class times, periods 1–12, set and no semester start. */
+export function withClassTimes(d: PlannerData = data()): PlannerData {
+  d.timetable.semester = { firstMonday: d.timetable.semester?.firstMonday ?? '', periods: EXAMPLE_PERIODS.map(p => ({ ...p })) };
+  return d;
 }
 
 let n = 0;

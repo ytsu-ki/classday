@@ -25,7 +25,7 @@ export function TimetableScreen() {
   const once = data.events.filter(e => e.repeat === 'once' && e.date >= today).sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
   const ended = data.events.length - weekly.length - once.length;
   const history = data.timetable.lastImport;
-
+  const periods = data.timetable.semester?.periods ?? [];
 
   return (
     <section class="screen timetable" aria-labelledby="timetable-title">
@@ -50,6 +50,12 @@ export function TimetableScreen() {
           <Button size="sm" variant="ghost" icon="undo" onClick={() => store.act(d => undoImport(d), { message: t.timetable.importUndone })}>{t.timetable.undoImport}</Button>
         </div>
       )}
+
+      <section class="panel class-times">
+        <SectionTitle>{t.classTimes.title}</SectionTitle>
+        <p class="panel-sub">{periods.length ? t.classTimes.summary(periods.length, clockTime(periods[0].start), clockTime(periods[periods.length - 1].end)) : t.classTimes.none}</p>
+        <Button size="sm" variant="soft" icon="clock" onClick={() => ui.open({ type: 'class-times' })}>{periods.length ? t.classTimes.edit : t.classTimes.set}</Button>
+      </section>
 
       {!data.events.length ? (
         <Empty icon="school" title={t.timetable.noClasses}>{t.timetable.noClassesBody}</Empty>

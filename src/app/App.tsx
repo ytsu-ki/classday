@@ -18,6 +18,7 @@ import { TimetableScreen } from '../ui/screens/Timetable';
 import { TodayScreen } from '../ui/screens/Today';
 import { WeekScreen } from '../ui/screens/Week';
 import { CaptureSheet } from '../ui/sheets/CaptureSheet';
+import { ClassTimesSheet } from '../ui/sheets/ClassTimesSheet';
 import { EventSheet, FixedSheet } from '../ui/sheets/EventSheet';
 import { ImportSheet } from '../ui/sheets/ImportSheet';
 import { ItemSheet } from '../ui/sheets/ItemSheet';
@@ -230,6 +231,7 @@ function SheetHost({ sheet }: { sheet: SheetSpec }) {
     case 'event': return <EventSheet key={`event-${sheet.id}-${sheet.day}-${sheet.start}`} id={sheet.id} day={sheet.day} start={sheet.start} />;
     case 'fixed': return <FixedSheet key={`fixed-${sheet.eventId}`} eventId={sheet.eventId} day={sheet.day} />;
     case 'import': return <ImportSheet key="import" />;
+    case 'class-times': return <ClassTimesSheet key="class-times" />;
     case 'restore': return <RestoreSheet key="restore" report={sheet.report} source={sheet.source} />;
     case 'confirm': return <ConfirmSheet key={`confirm-${sheet.title}`} {...sheet} />;
   }

@@ -1,4 +1,3 @@
-import { withDefaultPeriods } from '../domain/defaults';
 import type { Interval } from '../domain/schedule';
 import { daysBetween, toMinutes } from '../domain/time';
 import type { DateKey, FixedEvent, PlannerData } from '../domain/types';
@@ -91,15 +90,9 @@ export function courseColors(events: FixedEvent[]): Map<string, number> {
 
 export interface Period { n: number; start: number; end: number }
 
-/** The period times to show beside the grid: the semester's own, with the defaults for any not set. */
+/** The school's class times to show beside the grid; none until the student sets them, and the grid shows hours. */
 export function periodRows(data: PlannerData): Period[] {
-  const out: Period[] = [];
-  withDefaultPeriods(data.timetable.semester?.periods).forEach((p, i) => {
-    if (!p.start || !p.end) return;
-    const start = toMinutes(p.start), end = toMinutes(p.end);
-    if (end > start && (!out.length || start >= out[out.length - 1].end)) out.push({ n: i + 1, start, end });
-  });
-  return out;
+  return (data.timetable.semester?.periods ?? []).map((p, i) => ({ n: i + 1, start: toMinutes(p.start), end: toMinutes(p.end) }));
 }
 
 /** Week number in the semester, when one is set and the week falls within it. */

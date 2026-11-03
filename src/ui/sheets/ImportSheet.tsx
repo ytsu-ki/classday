@@ -1,9 +1,9 @@
 import { useState } from 'preact/hooks';
 import { useAppState, useStore, useUi } from '../../app/context';
-import { withDefaultPeriods } from '../../domain/defaults';
+import { EXAMPLE_PERIODS, periodsInUse, periodsProblem, retimeClasses, withPeriodAdded } from '../../domain/periods';
 import { ProblemError, type Problem } from '../../domain/problems';
 import { addDays, weekOf } from '../../domain/time';
-import type { FixedEvent, SemesterPreferences } from '../../domain/types';
+import type { ClassPeriod, FixedEvent, PlannerData, SemesterPreferences } from '../../domain/types';
 import { errorText, t } from '../../i18n';
 import { pickFile, readText } from '../../platform/backup';
 import { PDF_MAX_BYTES, readPdfText } from '../../platform/pdf';
@@ -16,8 +16,8 @@ import { parseTimetableText } from '../../timetable/text';
 import { formatRanges } from '../../timetable/weeks';
 import { Button, Field } from '../components/controls';
 import { Icon } from '../components/Icon';
+import { PeriodTable } from '../components/PeriodTable';
 import { Sheet } from '../components/Sheet';
-import { TimeField } from '../components/TimeField';
 import { clockTime, joinFacts, shortDate } from '../format';
 
 const TEXT_MAX_BYTES = 200 * 1024;
@@ -30,6 +30,28 @@ type Step =
   | { name: 'semester'; entries: ClassEntry[]; skipped: number }
   | { name: 'ics' }
   | { name: 'preview'; source: Source; events: FixedEvent[]; group: string; diff: ImportDiff; conflicts: ImportConflict[]; semester?: SemesterPreferences };
+
+/**
+ * The class times an import starts from: the saved ones, or else the example cut to the periods
+ * the timetable uses; with at least as many periods as the classes need.
+ */
+function startingPeriods(saved: ClassPeriod[], need: number): ClassPeriod[] {
+  let table = saved.length ? [...saved] : EXAMPLE_PERIODS.slice(0, need);
+  while (table.length < need) {
+    const more = withPeriodAdded(table);
+    if (!more) break;
+    table = more;
+  }
+  return table;
+}
+
+/** The data once new class times have moved the classes linked to them, for the preview. */
+function withClassTimes(data: PlannerData, semester?: SemesterPreferences): PlannerData {
+  if (!semester) return data;
+  const moved = { ...data, events: data.events.map(e => ({ ...e })) };
+  retimeClasses(moved, data.timetable.semester?.periods ?? [], semester.periods);
+  return moved;
+}
 
 function parseInWorker(text: string, options: IcsOptions): Promise<FixedEvent[]> {
   return new Promise((resolve, reject) => {
@@ -55,22 +77,24 @@ export function ImportSheet() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState('');
-  const [firstMonday, setFirstMonday] = useState(saved?.firstMonday ?? weekOf(today));
-  const [periods, setPeriods] = useState<SemesterPreferences['periods']>(() => withDefaultPeriods(saved?.periods));
+  const [firstMonday, setFirstMonday] = useState(saved?.firstMonday || weekOf(today));
+  const [periods, setPeriods] = useState<ClassPeriod[]>(saved?.periods ?? []);
   const [name, setName] = useState(t.importer.defaultName);
-  const [from, setFrom] = useState(saved?.firstMonday ?? weekOf(today));
-  const [until, setUntil] = useState(addDays(saved?.firstMonday ?? weekOf(today), 139));
+  const [from, setFrom] = useState(saved?.firstMonday || weekOf(today));
+  const [until, setUntil] = useState(addDays(saved?.firstMonday || weekOf(today), 139));
   const [file, setFile] = useState<File | null>(null);
   const [removeMissing, setRemoveMissing] = useState(true);
 
   const preview = (source: Source, events: FixedEvent[], group: string, semester?: SemesterPreferences) => {
     setError('');
-    setStep({ name: 'preview', source, events, group, diff: diffImport(data, events, group), conflicts: importConflicts(data, events), semester });
+    const after = withClassTimes(data, semester);
+    setStep({ name: 'preview', source, events, group, diff: diffImport(after, events, group), conflicts: importConflicts(after, events), semester });
   };
 
   const found = (entries: ClassEntry[], skipped: number) => {
     if (!entries.length) return setError(t.problems['timetable-no-classes']());
     setError('');
+    setPeriods(startingPeriods(saved?.periods ?? [], Math.max(0, ...usedPeriods(entries), periodsInUse(data))));
     setStep({ name: 'semester', entries, skipped });
   };
 
@@ -112,6 +136,8 @@ export function ImportSheet() {
   const buildFromEntries = (entries: ClassEntry[]) => {
     if (!name.trim()) return setError(t.importer.nameFirst);
     try {
+      const problem = periodsProblem(periods, periodsInUse(data));
+      if (problem) throw new ProblemError(problem);
       const semester: SemesterPreferences = { firstMonday, periods };
       preview('file', buildEvents(entries, semester, `file-${name.trim().slice(0, 80)}`), `file-${name.trim().slice(0, 80)}`, semester);
     } catch (e) {
@@ -136,6 +162,8 @@ export function ImportSheet() {
 
   const confirm = (s: Extract<Step, { name: 'preview' }>) => {
     const done = store.act(d => {
+      // New class times move the classes already linked to them before the import compares.
+      if (s.semester) retimeClasses(d, d.timetable.semester?.periods ?? [], s.semester.periods);
       applyImport(d, s.events, s.group, removeMissing);
       if (s.semester) d.timetable.semester = s.semester;
       return true;
@@ -188,14 +216,6 @@ export function ImportSheet() {
 
   if (step.name === 'semester') {
     const used = usedPeriods(step.entries);
-    const setPeriod = (n: number, key: 'start' | 'end', value: string) => {
-      setPeriods(current => {
-        const next = Array.from({ length: Math.max(current.length, n) }, (_, i) => current[i] ?? { start: '' as const, end: '' as const });
-        next[n - 1] = { ...next[n - 1], [key]: value };
-        return next as SemesterPreferences['periods'];
-      });
-      setError('');
-    };
     return (
       <Sheet title={t.importer.checkDetails} subtitle={t.importer.found(step.entries.length, step.skipped)} onClose={ui.close} footer={<>
         <Button variant="ghost" onClick={() => setStep({ name: 'choose' })}>{t.common.back}</Button>
@@ -207,18 +227,9 @@ export function ImportSheet() {
           </Field>
           {used.length > 0 && (
             <fieldset class="group">
-              <legend>{t.importer.periodTimes}</legend>
+              <legend>{t.classTimes.title}</legend>
               <p class="field-hint">{t.importer.periodsHint}</p>
-              <div class="period-grid">
-                <span aria-hidden="true">{t.importer.period}</span><span aria-hidden="true">{t.importer.starts}</span><span aria-hidden="true">{t.importer.ends}</span>
-                {used.map(n => (
-                  <>
-                    <span class="period-n">{n}</span>
-                    <TimeField label={t.importer.periodStarts(n)} value={periods[n - 1]?.start ?? ''} onChange={v => setPeriod(n, 'start', v)} />
-                    <TimeField label={t.importer.periodEnds(n)} value={periods[n - 1]?.end ?? ''} onChange={v => setPeriod(n, 'end', v)} />
-                  </>
-                ))}
-              </div>
+              <PeriodTable periods={periods} keep={Math.max(...used, periodsInUse(data))} onChange={next => { setPeriods(next); setError(''); }} />
             </fieldset>
           )}
           <Field label={t.importer.timetableName} hint={t.importer.timetableNameHint}>

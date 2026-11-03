@@ -14,7 +14,8 @@
 - **待办，与课表分开。** 待办可以有截止日期（在完整的月历上选择，时间可选）、预计用时（*30分钟*、*1小时* 或自定义），以及两个默认不选的优先级：**旗子** 表示重要，**时钟** 表示紧急。输入 `实验报告 周五 2小时 重要` 会把这些自动填成可以删除的小标签，中英文都可以。待办永远不会被放到课表上。
 - **按四象限排列的待办。** 已过期的排在最前（显示为灰色，在你勾掉之前一直保持未完成），然后是重要且紧急、重要、紧急和其他；每组里截止日期最近的排在前面。12 小时内到期的待办会有红色提醒。
 - **今天。** 整天按同一时间比例显示，小时刻度在左侧：日程、用餐和空闲时间都按实际长短显示，当前时间有一条线标出。已经过去的时段留在原处，颜色变淡。左右滑动切换到前一天或后一天。
-- **本周。** 课表网格：每天一列，左侧是节次和时间，每个日程有自己的柔和颜色，全天日程显示在日期行下方，顶部显示教学周。相邻的课无缝衔接。左右滑动切换周。
+- **本周。** 课表网格：每天一列，左侧是节次和时间（还没有设置上课时间时显示小时），每个日程有自己的柔和颜色，全天日程显示在日期行下方，顶部显示教学周。相邻的课无缝衔接。左右滑动切换周。
+- **上课时间。** 在 *设置 → 课表 → 上课时间* 里按你们学校的作息填写每一节的开始和结束时间。改“每节时长”或“课间”会一次调整所有节次；调整某一节时，它之后直到午饭或晚饭前的节次会一起移动，所以换夏令时、冬令时作息只需要改一处。按节次导入的课程会记住自己的节次，随上课时间一起调整。
 - **提醒。** 待办截止前（当天，或提前一两天）以及设了提醒的日程开始前发出通知。应用关闭时也能收到。
 - **笔记。** 快速记笔记，支持草稿恢复、搜索、可点击的链接，以及保留完整内容的“转成待办”。
 - **导入课表。** 导入教务系统导出的课表 PDF，粘贴或打开文字课程列表，或者使用任意 `.ics` 文件。每项变化都会先让你核对（把错的去掉），最近一次导入可以撤销。单独取消某一次课（“这次取消”）不会影响整个系列。
@@ -97,7 +98,7 @@ npm run android:test
 
 - **PDF。** 针对国内教务系统导出的课表 PDF：星期几为列、节次为行，单元格里是课程名，后面跟着 `(1-2节)` 这样的节次、周次、校区、教室和老师。pdf.js 读取文字及其位置；星期标题确定各列，没有标题的第二页接着第一页。表格上方的文字（你的姓名和学号）和下方的备注会被忽略。其他版式会退回到逐行读取文字；如果仍然读不到，就复制 PDF 里的文字粘贴进来。
 - **文字。** 每行一门课，各项顺序随意：课程名、星期几、时间（`08:00-09:40`）或节次，以及可选的周次、教室和老师，中英文都可以。只写了星期几的一行，会应用到它下面的各行。
-- **节次和周次。** 按节次记录的课表会询问一次第一周的星期一和用到的各节时间，第 1–12 节默认按标准作息填好（`src/domain/defaults.ts` 中的 `DEFAULT_PERIODS`）；两者都会记住，下次不用再填。
+- **节次和周次。** 按节次记录的课表会询问一次第一周的星期一和上课时间。已经设置过上课时间就直接沿用；没有的话，先填入一份示例作息，截到课表用到的节次，请对照学校的作息核对（`src/domain/periods.ts` 中的 `EXAMPLE_PERIODS`）。两者都会记住，导入的课程会随之后修改的上课时间一起调整。
 - **核对。** 保存前你能看到每门课，可以去掉读错的。用同一个名称再次导入，会更新这些课程并保留你自己做的修改。
 
 课日不会登录学校网站：各校教务系统差别太大，所以它读取系统导出的课表。
@@ -128,7 +129,8 @@ No account, no server, no tracking. Everything stays on the phone unless you exp
 - **To-dos, apart from the timetable.** A to-do has an optional deadline (picked on a full calendar, with an optional time), a time needed (*30 min*, *1 h* or your own), and two priorities that start unset: the **flag** for important and the **clock** for urgent. Typing `Lab report fri 2h important` fills them in as removable chips, in English or Chinese. Nothing is ever placed on the timetable for a to-do.
 - **The to-do list in Eisenhower order.** Overdue first (greyed, and still open until you tick it off), then important and urgent, important, urgent, and the rest; the nearest deadline leads within each group. A to-do due within 12 hours carries a red warning.
 - **Today.** The whole day on one time scale, the hours down the side: events, meals and free time each as tall as they last, and a line at the current time. Earlier hours stay in place, quieter. Swipe sideways for the next or previous day.
-- **Week.** A timetable grid: a column per day, the periods with their times down the side, each event in its own soft color, all-day events under the day row, and the semester week number on top. Back-to-back classes sit flush. Swipe sideways for the next or previous week.
+- **Week.** A timetable grid: a column per day, the periods with their times down the side (or hours, until class times are set), each event in its own soft color, all-day events under the day row, and the semester week number on top. Back-to-back classes sit flush. Swipe sideways for the next or previous week.
+- **Class times.** *Settings → Timetable → Class times* holds when each period starts and ends at your school. Class length and break change every period at once; moving one period moves the ones after it up to lunch or dinner, so a switch to summer or winter hours is one change. Classes imported by period remember their periods and move with the class times.
 - **Reminders.** Notifications before a to-do's deadline (on the day, or one or two days before) and before any event that asks for one. They arrive while the app is closed.
 - **Notes.** Quick notes with draft recovery, search, tappable links, and "Make it a to-do" that keeps the whole note.
 - **Timetable import.** Import the timetable PDF from your school's academic system, paste or open a text list of classes, or use any `.ics` file. Every change is reviewed first (leave out anything wrong), and the last import can be undone. Cancel a single class ("Not happening this time") without touching the series.
@@ -211,7 +213,7 @@ Everything is read on the phone; no file leaves it.
 
 - **PDF.** Made for the timetable PDFs that Chinese academic systems export: weekday columns, period rows, and cells such as a course name followed by `(1-2…)` periods, weeks, campus, room and teacher. pdf.js reads the text and its position; the weekday headers mark the columns, and a second page without headers continues the first. Text above the grid (your name and student number) and notes below it are ignored. Other layouts fall back to reading the text line by line; if that finds nothing, copy the PDF's text and paste it instead.
 - **Text.** One class per line, fields in any order: a name, a weekday, a time (`08:00-09:40`) or periods, and optionally weeks, room and teacher, in English or Chinese. A line holding only a weekday applies to the lines below it.
-- **Periods and weeks.** Imports that count periods ask once for the Monday of week one and the times of the periods used, with periods 1–12 filled in from the default schedule (`DEFAULT_PERIODS` in `src/domain/defaults.ts`); both are remembered for next time.
+- **Periods and weeks.** Imports that count periods ask once for the Monday of week one and the class times. Saved class times are used as they are; otherwise an example schedule is filled in, cut to the periods the timetable uses, for checking against your school's (`EXAMPLE_PERIODS` in `src/domain/periods.ts`). Both are remembered, and imported classes move with any later change to the class times.
 - **Review.** You see every class before anything is saved and can leave out anything misread. Importing again under the same name updates those classes and keeps your own edits.
 
 Classday doesn't sign in to school websites: academic systems differ too much, so it reads the timetable they export instead.

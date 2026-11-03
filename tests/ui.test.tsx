@@ -5,7 +5,7 @@ import { Store } from '../src/app/store';
 import { initialData } from '../src/domain/defaults';
 import type { PlannerData } from '../src/domain/types';
 import { prefers24h, time, timeParts } from '../src/ui/format';
-import { once, todo, weekly } from './helpers';
+import { once, todo, weekly, withClassTimes } from './helpers';
 
 const clock = () => new Date('2026-10-13T09:00:00'); // Tuesday morning
 
@@ -145,7 +145,7 @@ describe('events', () => {
   });
 
   it('read a whole notice pasted into the name, lasting a double period without an end', () => {
-    const store = mount();
+    const store = mount(withClassTimes());
     addEvent();
     fireEvent.paste(screen.getByLabelText('Name'), { clipboardData: { getData: () => 'Hi all, the career fair is on Oct 15 at 10:10 in the Main Hall. Please bring your CV.' } });
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('career fair');
@@ -257,8 +257,8 @@ describe('week', () => {
     nav('Week');
     expect(screen.getByRole('heading', { name: 'Week 6' })).toBeTruthy();
     const grid = screen.getByRole('group', { name: /Timetable for 12 – 18 October/ });
-    // The two saved periods, then the default times for periods 3–12.
-    expect(grid.querySelectorAll('.wk-period')).toHaveLength(12);
+    // Only the school's own periods, with no times filled in from elsewhere.
+    expect(grid.querySelectorAll('.wk-period')).toHaveLength(2);
     expect(within(grid).getByRole('button', { name: /^Physics · Tue/ }).textContent).toContain('B204');
     // Only the cards take a tap: no current-time line, no hidden add zones, and the day row stays put.
     expect(within(grid).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual([expect.stringMatching(/^Physics · Tue/)]);
@@ -271,7 +271,7 @@ describe('week', () => {
   });
 
   it('sets back-to-back classes flush across the passing period between them', () => {
-    mount({ ...initialData(), events: [weekly('Physics', 2, '08:00', '09:40'), weekly('Chemistry', 2, '10:10', '11:50')] });
+    mount(withClassTimes({ ...initialData(), events: [weekly('Physics', 2, '08:00', '09:40'), weekly('Chemistry', 2, '10:10', '11:50')] }));
     nav('Week');
     const card = (name: RegExp) => screen.getByRole('button', { name }) as HTMLElement;
     const physics = card(/^Physics · Tue/), chemistry = card(/^Chemistry · Tue/);
@@ -283,7 +283,7 @@ describe('week', () => {
   });
 
   it('runs through periods 11 and 12, with evening classes flush like the rest', () => {
-    mount({ ...initialData(), events: [weekly('Seminar', 3, '18:30', '20:10'), weekly('Lab', 3, '20:20', '22:00')] });
+    mount(withClassTimes({ ...initialData(), events: [weekly('Seminar', 3, '18:30', '20:10'), weekly('Lab', 3, '20:20', '22:00')] }));
     nav('Week');
     const labels = [...document.querySelectorAll('.wk-period')].map(p => p.textContent);
     expect(labels).toHaveLength(12);
@@ -323,5 +323,63 @@ describe('other screens', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(screen.getByRole('alert').textContent).toMatch(/four hours/);
     expect(store.get().data.settings.dayEnd).toBe('23:00');
+  });
+});
+
+describe('class times', () => {
+  const openTimetable = () => {
+    nav('Settings');
+    fireEvent.click(screen.getByRole('button', { name: /^Timetable/ }));
+  };
+
+  it('show hours on the week until they are set, and start from the example times', () => {
+    const store = mount();
+    nav('Week');
+    expect(document.querySelectorAll('.wk-period')).toHaveLength(0);
+    expect(document.querySelectorAll('.wk-hour').length).toBeGreaterThan(0);
+    openTimetable();
+    expect(screen.getByText(/Not set yet/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Set class times' }));
+    fireEvent.change(screen.getByLabelText('Class length'), { target: { value: '50' } });
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+    const semester = store.get().data.timetable.semester!;
+    expect(semester.firstMonday).toBe('');
+    expect(semester.periods).toHaveLength(12);
+    expect(semester.periods.slice(0, 3)).toEqual([{ start: '08:00', end: '08:50' }, { start: '09:00', end: '09:50' }, { start: '10:20', end: '11:10' }]);
+    expect(screen.getByText(/12 periods, /)).toBeTruthy();
+    nav('Week');
+    expect(document.querySelectorAll('.wk-period')).toHaveLength(12);
+  });
+
+  it('move the rest of a block and the classes linked to it, as for summer hours', () => {
+    const store = mount(withClassTimes({ ...initialData(), events: [weekly('Physics', 2, '13:40', '15:20', { periods: [5, 6] })] }));
+    openTimetable();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit class times' }));
+    setTime(/^Period 5 starts/, '14:10');
+    // Classes use periods 1–6, so only later ones can go, and not all at once.
+    expect(screen.getByRole('button', { name: 'Remove the last' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Remove all' })).toBeNull();
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+    const { periods } = store.get().data.timetable.semester!;
+    expect(periods.slice(3, 9).map(p => p.start)).toEqual(['11:05', '14:10', '15:05', '16:10', '17:05', '18:30']);
+    expect(store.get().data.events[0]).toMatchObject({ start: '14:10', end: '15:50', periods: [5, 6] });
+    expect(screen.getByText('Class times saved. 1 class moved.')).toBeTruthy();
+  });
+
+  it('are asked for when a pasted timetable counts periods, and its classes follow them', () => {
+    const store = mount();
+    openTimetable();
+    fireEvent.click(screen.getByRole('button', { name: 'Import timetable' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Paste or open text/ }));
+    type(screen.getByLabelText('Paste your timetable'), 'Physics, Wed periods 3-4, weeks 1-8, B204');
+    fireEvent.click(screen.getByRole('button', { name: 'Read' }));
+    // The example times, cut to the periods this timetable uses, none of which can go.
+    expect(screen.getAllByRole('button', { name: /^Period \d+ starts/ })).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: 'Remove the last' })).toBeNull();
+    setTime(/^Period 3 starts/, '10:00');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(store.get().data.events[0]).toMatchObject({ title: 'Physics', start: '10:00', end: '11:40', periods: [3, 4] });
+    expect(store.get().data.timetable.semester!.periods.map(p => p.start)).toEqual(['08:00', '08:55', '10:00', '10:55']);
   });
 });

@@ -14,7 +14,7 @@ export interface ImportDiff {
 }
 
 // Cancelled single occurrences belong to the student, so they are not compared.
-const FIELDS = ['title', 'category', 'repeat', 'weekday', 'days', 'weeks', 'date', 'from', 'until', 'parity', 'start', 'end', 'location', 'teacher'] as const;
+const FIELDS = ['title', 'category', 'repeat', 'weekday', 'days', 'weeks', 'date', 'from', 'until', 'parity', 'start', 'end', 'periods', 'location', 'teacher'] as const;
 const signature = (e: FixedEvent) => JSON.stringify(FIELDS.map(k => e[k] ?? null));
 
 export function diffImport(data: PlannerData, incoming: FixedEvent[], group: string): ImportDiff {

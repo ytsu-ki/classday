@@ -36,6 +36,7 @@ export type Problem =
   | { code: 'semester-first-monday' }
   | { code: 'semester-period'; period: number }
   | { code: 'semester-periods-overlap' }
+  | { code: 'semester-period-in-use'; period: number }
   | { code: 'timetable-no-classes' }
   | { code: 'text-too-large' }
   | { code: 'pdf-too-large' }

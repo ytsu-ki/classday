@@ -17,8 +17,6 @@ export interface ClassEntry {
   teacher?: string;
 }
 
-export const MAX_PERIODS = 16;
-
 /** The periods any entry uses, so the semester step only asks for those. */
 export function usedPeriods(entries: ClassEntry[]): number[] {
   const used = new Set<number>();
@@ -43,12 +41,13 @@ export function buildEvents(entries: ClassEntry[], semester: SemesterPreferences
   const events: FixedEvent[] = [];
   const seen = new Set<string>();
   for (const e of entries) {
-    const start = e.periods ? periods[e.periods[0] - 1].start as Clock : e.start;
-    const end = e.periods ? periods[e.periods[1] - 1].end as Clock : e.end;
+    const start = e.periods ? periods[e.periods[0] - 1].start : e.start;
+    const end = e.periods ? periods[e.periods[1] - 1].end : e.end;
     if (!start || !end || toMinutes(end) <= toMinutes(start)) continue;
     const weeks = e.weeks?.length ? e.weeks : undefined;
     // The same class listed twice (a timetable repeats it across cells or pages) is imported once.
-    const sourceKey = JSON.stringify([e.title, e.weekday, start, end, weeks ?? null]);
+    // A class counted in periods is known by them, so it stays the same class when the class times change.
+    const sourceKey = JSON.stringify([e.title, e.weekday, ...(e.periods ? [e.periods] : [start, end]), weeks ?? null]);
     if (seen.has(sourceKey)) continue;
     seen.add(sourceKey);
     events.push({
@@ -56,6 +55,7 @@ export function buildEvents(entries: ClassEntry[], semester: SemesterPreferences
       repeat: 'weekly', date: firstMonday, from: firstMonday,
       until: weeks ? addDays(firstMonday, Math.max(...weeks) * 7 - 1) : '',
       parity: 'all',
+      ...(e.periods ? { periods: [e.periods[0], e.periods[1]] as [number, number] } : {}),
       ...(weeks ? { weeks } : {}),
       ...(e.location ? { location: e.location } : {}),
       ...(e.teacher ? { teacher: e.teacher } : {}),

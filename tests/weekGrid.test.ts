@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PERIODS, withDefaultPeriods } from '../src/domain/defaults';
 import { courseColors, DENSE, inLanes, passingBreaks, periodRows, semesterWeek, SPARSE, weekAxis } from '../src/ui/weekGrid';
-import { data, weekly } from './helpers';
+import { data, weekly, withClassTimes } from './helpers';
 
 /** Positions are whole pixels, so allow one pixel of rounding. */
 const near = (actual: number, expected: number) => expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1);
@@ -38,7 +37,7 @@ describe('week grid axis', () => {
 });
 
 describe('passing periods', () => {
-  const rows = periodRows(data());
+  const rows = periodRows(withClassTimes());
 
   it('are the short breaks between periods, not lunch or dinner', () => {
     expect(passingBreaks(rows, [])).toEqual([
@@ -73,24 +72,14 @@ describe('week grid colors and periods', () => {
     expect(colors.get('Physics')).not.toBe(colors.get('Calculus'));
   });
 
-  it('shows the semester’s period times, with the defaults wherever one is not set', () => {
+  it('shows the school’s own class times, and none before they are set', () => {
+    expect(periodRows(data())).toEqual([]);
     const d = data();
-    d.timetable.semester = { firstMonday: '2026-09-07', periods: [{ start: '08:00', end: '08:45' }, { start: '', end: '' }, { start: '10:00', end: '10:45' }] };
-    const rows = periodRows(d);
-    expect(rows[0]).toEqual({ n: 1, start: 480, end: 525 });
-    expect(rows.find(r => r.n === 3)).toEqual({ n: 3, start: 600, end: 645 });
-    expect(withDefaultPeriods(d.timetable.semester.periods)[1]).toEqual(DEFAULT_PERIODS[1] ?? { start: '', end: '' });
-  });
-
-  it('fills in periods 1–12 before any timetable is imported', () => {
-    const rows = periodRows(data());
+    d.timetable.semester = { firstMonday: '', periods: [{ start: '08:30', end: '09:20' }, { start: '09:30', end: '10:20' }] };
+    expect(periodRows(d)).toEqual([{ n: 1, start: 510, end: 560 }, { n: 2, start: 570, end: 620 }]);
+    const rows = periodRows(withClassTimes());
     expect(rows.map(r => r.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-    expect(rows[0]).toEqual({ n: 1, start: 8 * 60, end: 8 * 60 + 45 });
-    expect(rows[4]).toEqual({ n: 5, start: 13 * 60 + 40, end: 14 * 60 + 25 });
-    expect(rows[9]).toEqual({ n: 10, start: 19 * 60 + 25, end: 20 * 60 + 10 });
-    expect(rows[10]).toEqual({ n: 11, start: 20 * 60 + 20, end: 21 * 60 + 5 });
     expect(rows[11]).toEqual({ n: 12, start: 21 * 60 + 15, end: 22 * 60 });
-    expect(withDefaultPeriods([])).toEqual(DEFAULT_PERIODS);
   });
 
   it('numbers the weeks of the semester', () => {

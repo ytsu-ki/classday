@@ -15,6 +15,7 @@ export type SheetSpec =
   | { type: 'event'; id: string | null; day?: DateKey; start?: number }
   | { type: 'fixed'; eventId: string; day: DateKey }
   | { type: 'import' }
+  | { type: 'class-times' }
   | { type: 'restore'; report: NormalizeReport; source: string }
   | { type: 'confirm'; title: string; message: string; confirm: string; danger?: boolean; onConfirm: () => void };
 
