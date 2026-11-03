@@ -6,9 +6,7 @@ import { addDays, weekOf } from '../../domain/time';
 import type { ClassPeriod, FixedEvent, PlannerData, SemesterPreferences } from '../../domain/types';
 import { errorText, t } from '../../i18n';
 import { pickFile, readText } from '../../platform/backup';
-import { PDF_MAX_BYTES, readPdfText } from '../../platform/pdf';
 import { buildEvents, usedPeriods, type ClassEntry } from '../../timetable/classes';
-import { classesFromGrid } from '../../timetable/grid';
 import type { IcsOptions } from '../../timetable/ics';
 import { ICS_MAX_BYTES } from '../../timetable/limits';
 import { applyImport, diffImport, importConflicts, type ImportConflict, type ImportDiff } from '../../timetable/merge';
@@ -27,16 +25,17 @@ type Source = 'file' | 'ics';
 type Step =
   | { name: 'choose' }
   | { name: 'text' }
-  | { name: 'semester'; entries: ClassEntry[]; skipped: number }
+  /** `fromFile`: the class times were read from the file. */
+  | { name: 'semester'; entries: ClassEntry[]; skipped: number; fromFile: boolean }
   | { name: 'ics' }
   | { name: 'preview'; source: Source; events: FixedEvent[]; group: string; diff: ImportDiff; conflicts: ImportConflict[]; semester?: SemesterPreferences };
 
 /**
- * The class times an import starts from: the saved ones, or else the example cut to the periods
- * the timetable uses; with at least as many periods as the classes need.
+ * The class times an import starts from: those the file gives, else the saved ones, else the
+ * example cut to the periods the timetable uses; with at least as many periods as the classes need.
  */
-function startingPeriods(saved: ClassPeriod[], need: number): ClassPeriod[] {
-  let table = saved.length ? [...saved] : EXAMPLE_PERIODS.slice(0, need);
+function startingPeriods(found: ClassPeriod[], saved: ClassPeriod[], need: number): ClassPeriod[] {
+  let table = found.length ? [...found] : saved.length ? [...saved] : EXAMPLE_PERIODS.slice(0, need);
   while (table.length < need) {
     const more = withPeriodAdded(table);
     if (!more) break;
@@ -91,29 +90,26 @@ export function ImportSheet() {
     setStep({ name: 'preview', source, events, group, diff: diffImport(after, events, group), conflicts: importConflicts(after, events), semester });
   };
 
-  const found = (entries: ClassEntry[], skipped: number) => {
+  const found = (entries: ClassEntry[], skipped: number, times: ClassPeriod[] = []) => {
     if (!entries.length) return setError(t.problems['timetable-no-classes']());
     setError('');
-    setPeriods(startingPeriods(saved?.periods ?? [], Math.max(0, ...usedPeriods(entries), periodsInUse(data))));
-    setStep({ name: 'semester', entries, skipped });
+    setPeriods(startingPeriods(times, saved?.periods ?? [], Math.max(0, ...usedPeriods(entries), periodsInUse(data))));
+    setStep({ name: 'semester', entries, skipped, fromFile: times.length > 0 && usedPeriods(entries).length > 0 });
   };
 
-  const readPdf = async () => {
-    const chosen = await pickFile('.pdf,application/pdf');
+  const readFile = async () => {
+    // Any file can be chosen: Android greys out files whose type isn't listed, and saved pages
+    // and exports often carry odd types. What the file holds decides how it is read.
+    const chosen = await pickFile('');
     if (!chosen) return;
-    if (chosen.size > PDF_MAX_BYTES) return setError(t.problems['pdf-too-large']());
     setBusy(true); setError('');
     try {
-      const pages = await readPdfText(await chosen.arrayBuffer());
-      const entries = classesFromGrid(pages);
-      // Without a grid, the PDF's text may still be a list of classes.
-      if (entries.length) found(entries, 0);
-      else {
-        const result = parseTimetableText(pages.map(items => items.map(i => i.text).join('\n')).join('\n'));
-        found(result.entries, result.skipped);
-      }
-    } catch {
-      setError(t.importer.pdfFailed);
+      const { readTimetableFile } = await import('../../timetable/files');
+      const result = await readTimetableFile(chosen);
+      if (result.kind === 'calendar') { setFile(chosen); setStep({ name: 'ics' }); }
+      else found(result.entries, result.skipped, result.periods);
+    } catch (e) {
+      setError(errorText(e, t.problems['file-unreadable']()));
     } finally {
       setBusy(false);
     }
@@ -177,17 +173,13 @@ export function ImportSheet() {
     return (
       <Sheet title={t.importer.title} onClose={ui.close}>
         <div class="choice-list">
-          <button type="button" class="choice" disabled={busy} onClick={readPdf}>
-            <Icon name="notes" />
-            <span><strong>{busy ? t.importer.readingPdf : t.importer.fromPdf}</strong><span>{t.importer.pdfHint}</span></span>
+          <button type="button" class="choice" disabled={busy} onClick={readFile}>
+            <Icon name="download" />
+            <span><strong>{busy ? t.importer.readingFile : t.importer.fromFile}</strong><span>{t.importer.fileHint}</span></span>
           </button>
           <button type="button" class="choice" onClick={() => { setError(''); setStep({ name: 'text' }); }}>
             <Icon name="edit" />
             <span><strong>{t.importer.fromText}</strong><span>{t.importer.textHint}</span></span>
-          </button>
-          <button type="button" class="choice" onClick={() => { setError(''); setStep({ name: 'ics' }); }}>
-            <Icon name="calendar" />
-            <span><strong>{t.importer.fromFile}</strong><span>{t.importer.fileHint}</span></span>
           </button>
         </div>
         {errorLine}
@@ -228,7 +220,7 @@ export function ImportSheet() {
           {used.length > 0 && (
             <fieldset class="group">
               <legend>{t.classTimes.title}</legend>
-              <p class="field-hint">{t.importer.periodsHint}</p>
+              <p class="field-hint">{step.fromFile ? t.importer.timesFromFile : t.importer.periodsHint}</p>
               <PeriodTable periods={periods} keep={Math.max(...used, periodsInUse(data))} onChange={next => { setPeriods(next); setError(''); }} />
             </fieldset>
           )}

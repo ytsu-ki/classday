@@ -65,7 +65,7 @@ function mount(data: PlannerData) {
 }
 
 /** Words that may stay as they are in Chinese: the app's name, technical names and units. */
-const ALLOWED = new Set(['Day', 'Planner', 'Android', 'JavaScript', 'VPN', 'KB', 'MB', 'ics', 'PDF', 'English']);
+const ALLOWED = new Set(['Day', 'Planner', 'Android', 'JavaScript', 'VPN', 'KB', 'MB', 'ics', 'PDF', 'Excel', 'xlsx', 'xls', 'WPS', 'English']);
 
 function englishLeftovers(): string[] {
   const texts = [document.body.textContent ?? ''];

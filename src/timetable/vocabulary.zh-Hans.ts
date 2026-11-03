@@ -21,6 +21,20 @@ export const ZH = {
   noLocation: ['未排地点', '无', '待定', '未安排'],
   /** Words that mark a room or building. */
   roomHint: '(?:楼|室|馆|厅|机房|实验|中心)',
+  /** Numerals in period labels beside a timetable: 第一节 … 第十二节. */
+  numerals: '[一二三四五六七八九十]{1,3}',
+  /** A double period counted as one (第一大节), which says nothing about single periods. */
+  doublePeriod: '大节',
   /** Full-width punctuation, read as its ASCII counterpart. */
   fullWidth: { '（': '(', '）': ')', '，': ',', '、': ',', '：': ':', '；': ';', '～': '~', '－': '-', '—': '-', '–': '-' } as Record<string, string>,
 };
+
+const DIGITS: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+
+/** A Chinese numeral up to 99 as a number: 三 is 3, 十二 is 12, 二十 is 20. */
+export function numeralValue(text: string): number | undefined {
+  const [tens, ones] = text.includes('十') ? text.split('十') : ['', text];
+  if (!text.includes('十')) return DIGITS[ones];
+  const value = (tens ? DIGITS[tens] ?? NaN : 1) * 10 + (ones ? DIGITS[ones] ?? NaN : 0);
+  return Number.isNaN(value) ? undefined : value;
+}

@@ -18,7 +18,7 @@
 - **上课时间。** 在 *设置 → 课表 → 上课时间* 里按你们学校的作息填写每一节的开始和结束时间。改“每节时长”或“课间”会一次调整所有节次；调整某一节时，它之后直到午饭或晚饭前的节次会一起移动，所以换夏令时、冬令时作息只需要改一处。按节次导入的课程会记住自己的节次，随上课时间一起调整。
 - **提醒。** 待办截止前（当天，或提前一两天）以及设了提醒的日程开始前发出通知。应用关闭时也能收到。
 - **笔记。** 快速记笔记，支持草稿恢复、搜索、可点击的链接，以及保留完整内容的“转成待办”。
-- **导入课表。** 导入教务系统导出的课表 PDF，粘贴或打开文字课程列表，或者使用任意 `.ics` 文件。每项变化都会先让你核对（把错的去掉），最近一次导入可以撤销。单独取消某一次课（“这次取消”）不会影响整个系列。
+- **导入课表。** **从文件导入**教务系统导出的 PDF、Excel（`.xlsx`）、保存的网页或 `.ics` 日历，或者粘贴、打开文字课程列表。每项变化都会先让你核对（把错的去掉），最近一次导入可以撤销。单独取消某一次课（“这次取消”）不会影响整个系列。
 - **备份。** 导出或恢复一个 JSON 文件。设备上自动保留最近七天的每日副本，用于恢复。
 - **简体中文和英文。** *设置 → 外观 → 语言*：*跟随系统*、*English* 或简体中文。所有内容一起切换，包括日期、时长和提醒。在 Android 13 及以上版本中，应用也会出现在系统的“应用语言”设置里，在那里做的修改同样生效。
 - **分组的设置。** *计划*（你的一天、提醒、课表）和 *应用*（外观、备份与数据），每项都有自己的页面。
@@ -94,11 +94,12 @@ npm run android:test
 
 ## 导入课表
 
-所有内容都在手机上读取，文件不会离开手机。
+所有内容都在手机上读取，文件不会离开手机。**从文件导入**可以选择任何文件，按文件内容（而不是扩展名）决定怎么读取，因为教务系统导出的“Excel”常常其实是网页。
 
 - **PDF。** 针对国内教务系统导出的课表 PDF：星期几为列、节次为行，单元格里是课程名，后面跟着 `(1-2节)` 这样的节次、周次、校区、教室和老师。pdf.js 读取文字及其位置；星期标题确定各列，没有标题的第二页接着第一页。表格上方的文字（你的姓名和学号）和下方的备注会被忽略。其他版式会退回到逐行读取文字；如果仍然读不到，就复制 PDF 里的文字粘贴进来。
+- **网页和 Excel。** 教务系统里保存的课表网页（`.html`）、安卓版 Chrome“下载网页”得到的 `.mhtml`、`.xlsx`、Excel 2003 XML，以及其实是网页或 XML 的 `.xls`。网页按 GBK 或 UTF-8 读取，不会运行其中的脚本，也不会加载任何外部内容；`.xlsx` 用系统自带的解压和 XML 解析读取，不依赖电子表格库。有一行星期几表头的表格按课表网格读取：单元格的星期来自表头；如果单元格里没写节次，就按它跨越的行（合并单元格）对应的节次。一格里的多门课可以用空行隔开。没有星期表头的表格按“每行一门课”读取。旧版二进制 `.xls` 请先用 WPS 或 Excel 另存为 `.xlsx`。
 - **文字。** 每行一门课，各项顺序随意：课程名、星期几、时间（`08:00-09:40`）或节次，以及可选的周次、教室和老师，中英文都可以。只写了星期几的一行，会应用到它下面的各行。
-- **节次和周次。** 按节次记录的课表会询问一次第一周的星期一和上课时间。已经设置过上课时间就直接沿用；没有的话，先填入一份示例作息，截到课表用到的节次，请对照学校的作息核对（`src/domain/periods.ts` 中的 `EXAMPLE_PERIODS`）。两者都会记住，导入的课程会随之后修改的上课时间一起调整。
+- **节次和周次。** 按节次记录的课表会询问一次第一周的星期一和上课时间。如果文件在节次旁边写了时间（比如“第1节 08:00-08:45”，PDF、网页和 Excel 都可以），就用这些时间，并提示你核对；否则沿用已经设置的上课时间；都没有的话，先填入一份示例作息，截到课表用到的节次，请对照学校的作息核对（`src/domain/periods.ts` 中的 `EXAMPLE_PERIODS`）。两者都会记住，导入的课程会随之后修改的上课时间一起调整。
 - **核对。** 保存前你能看到每门课，可以去掉读错的。用同一个名称再次导入，会更新这些课程并保留你自己做的修改。
 
 课日不会登录学校网站：各校教务系统差别太大，所以它读取系统导出的课表。
@@ -106,7 +107,7 @@ npm run android:test
 ## 局限
 
 - 提醒使用安卓的非精确闹钟，可能晚到几分钟；手机的省电设置可能让它更晚。
-- PDF 读取针对教务系统的表格式课表；特殊版式可能需要改为粘贴文字。
+- 文件读取针对教务系统的表格式课表；特殊版式可能需要改为粘贴文字。旧版二进制 `.xls` 需要先另存为 `.xlsx`。
 - 一次只用一台设备：没有同步。换手机时用备份文件迁移。
 
 ## 许可说明
@@ -133,7 +134,7 @@ No account, no server, no tracking. Everything stays on the phone unless you exp
 - **Class times.** *Settings → Timetable → Class times* holds when each period starts and ends at your school. Class length and break change every period at once; moving one period moves the ones after it up to lunch or dinner, so a switch to summer or winter hours is one change. Classes imported by period remember their periods and move with the class times.
 - **Reminders.** Notifications before a to-do's deadline (on the day, or one or two days before) and before any event that asks for one. They arrive while the app is closed.
 - **Notes.** Quick notes with draft recovery, search, tappable links, and "Make it a to-do" that keeps the whole note.
-- **Timetable import.** Import the timetable PDF from your school's academic system, paste or open a text list of classes, or use any `.ics` file. Every change is reviewed first (leave out anything wrong), and the last import can be undone. Cancel a single class ("Not happening this time") without touching the series.
+- **Timetable import.** **From a file**: the PDF, Excel file (`.xlsx`), saved web page or `.ics` calendar from your school's academic system; or paste or open a text list of classes. Every change is reviewed first (leave out anything wrong), and the last import can be undone. Cancel a single class ("Not happening this time") without touching the series.
 - **Backups.** Export and restore one JSON file. Seven daily automatic copies on the device for recovery.
 - **English and Simplified Chinese.** *Settings → Appearance → Language*: *System* (the phone's language), *English* or Simplified Chinese. Everything switches at once, including dates, durations and reminders. On Android 13+ the app also appears in the phone's own per-app language settings, and a change made there is picked up.
 - **Settings, grouped.** *Planning* (your day, reminders, timetable) and *App* (appearance, backup and data), each on its own page.
@@ -209,11 +210,12 @@ Writes `releases/classday-<version>.apk` and its SHA-256 checksum. The script re
 
 ## Timetable import
 
-Everything is read on the phone; no file leaves it.
+Everything is read on the phone; no file leaves it. **From a file** lets you choose any file and reads it by what it holds, not its extension, since an academic system's "Excel" export is often a web page.
 
 - **PDF.** Made for the timetable PDFs that Chinese academic systems export: weekday columns, period rows, and cells such as a course name followed by `(1-2…)` periods, weeks, campus, room and teacher. pdf.js reads the text and its position; the weekday headers mark the columns, and a second page without headers continues the first. Text above the grid (your name and student number) and notes below it are ignored. Other layouts fall back to reading the text line by line; if that finds nothing, copy the PDF's text and paste it instead.
+- **Web pages and Excel.** A timetable page saved from the academic system (`.html`), the `.mhtml` that Chrome on Android saves, `.xlsx`, Excel 2003 XML, and `.xls` files that are really a web page or XML. Pages are read as GBK or UTF-8, without running their scripts or loading anything they link to; `.xlsx` is opened with the phone's own unzipping and XML parser, with no spreadsheet library. A table with a header row of weekdays is read as a timetable grid: a cell takes its weekday from the header and, when its text doesn't give periods, the periods of the rows it spans (merged cells). Classes sharing a cell can be separated by a blank line. A table without a weekday header is read as one class per row. An older binary `.xls` needs saving as `.xlsx` in WPS or Excel first.
 - **Text.** One class per line, fields in any order: a name, a weekday, a time (`08:00-09:40`) or periods, and optionally weeks, room and teacher, in English or Chinese. A line holding only a weekday applies to the lines below it.
-- **Periods and weeks.** Imports that count periods ask once for the Monday of week one and the class times. Saved class times are used as they are; otherwise an example schedule is filled in, cut to the periods the timetable uses, for checking against your school's (`EXAMPLE_PERIODS` in `src/domain/periods.ts`). Both are remembered, and imported classes move with any later change to the class times.
+- **Periods and weeks.** Imports that count periods ask once for the Monday of week one and the class times. When the file writes times beside the period numbers (such as "1 08:00-08:45", in a PDF, page or spreadsheet), those are used and flagged for checking; otherwise saved class times are used as they are; otherwise an example schedule is filled in, cut to the periods the timetable uses, for checking against your school's (`EXAMPLE_PERIODS` in `src/domain/periods.ts`). Both are remembered, and imported classes move with any later change to the class times.
 - **Review.** You see every class before anything is saved and can leave out anything misread. Importing again under the same name updates those classes and keeps your own edits.
 
 Classday doesn't sign in to school websites: academic systems differ too much, so it reads the timetable they export instead.
@@ -221,7 +223,7 @@ Classday doesn't sign in to school websites: academic systems differ too much, s
 ## Limits
 
 - Reminders use Android's inexact alarms, so one can arrive a few minutes late; the phone's battery settings can delay it further.
-- The PDF reader knows grid timetables from academic systems; an unusual layout may need the text pasted instead.
+- The file readers know grid timetables from academic systems; an unusual layout may need the text pasted instead. An older binary `.xls` needs saving as `.xlsx` first.
 - One device at a time: there is no sync. Move between phones with a backup file.
 
 ## License notes

@@ -39,8 +39,10 @@ export type Problem =
   | { code: 'semester-period-in-use'; period: number }
   | { code: 'timetable-no-classes' }
   | { code: 'text-too-large' }
-  | { code: 'pdf-too-large' }
-  | { code: 'pdf-unreadable' }
+  | { code: 'file-too-large' }
+  | { code: 'file-unreadable' }
+  | { code: 'file-old-excel' }
+  | { code: 'file-unknown' }
   | { code: 'ics-size' }
   | { code: 'ics-range' }
   | { code: 'ics-unreadable' }

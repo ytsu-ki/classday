@@ -41,8 +41,26 @@ function columnText(items: TextItem[]): string[] {
   return [...items].sort((a, b) => a.y - b.y || a.x - b.x).map(i => i.text);
 }
 
-export function classesFromGrid(pages: TextItem[][]): ClassEntry[] {
+/** Text left of the grid, one line per row, top to bottom: the period numbers and any times beside them. */
+function labelsOf(items: TextItem[], left: number, top: number): string[] {
+  const rows: TextItem[][] = [];
+  for (const item of [...items].sort((a, b) => a.y - b.y || a.x - b.x)) {
+    if (item.y <= top || item.x + item.width > left + 1) continue;
+    const row = rows.find(r => Math.abs(r[0].y - item.y) < 4);
+    if (row) row.push(item); else rows.push([item]);
+  }
+  return rows.map(r => r.sort((a, b) => a.x - b.x).map(i => i.text.trim()).join(' ')).filter(Boolean);
+}
+
+export interface GridResult {
+  entries: ClassEntry[];
+  /** The labels down the left of the grid, for reading period times from (see periodTimes.ts). */
+  labels: string[];
+}
+
+export function readGrid(pages: TextItem[][]): GridResult {
   const entries: ClassEntry[] = [];
+  const labels: string[] = [];
   let columns: Column[] | null = null;
   for (const items of pages) {
     const layout = layoutOf(items);
@@ -50,6 +68,7 @@ export function classesFromGrid(pages: TextItem[][]): ClassEntry[] {
     columns = layout?.columns ?? columns;
     const top = layout ? layout.top + 2 : -Infinity;
     if (!columns) continue;
+    labels.push(...labelsOf(items, Math.min(...columns.map(c => c.left)), top));
     for (const column of columns) {
       const inColumn = items.filter(i => {
         const start = i.x + 1;
@@ -62,5 +81,7 @@ export function classesFromGrid(pages: TextItem[][]): ClassEntry[] {
       else entries.push(...parseTimetableText(pieces.join('\n'), column.weekday).entries);
     }
   }
-  return entries;
+  return { entries, labels };
 }
+
+export const classesFromGrid = (pages: TextItem[][]): ClassEntry[] => readGrid(pages).entries;
