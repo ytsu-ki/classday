@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useAppState, useStore, useUi } from '../../app/context';
 import { services } from '../../app/services';
 import * as act from '../../domain/actions';
+import { LIMITS } from '../../domain/defaults';
+import { noteParts, noteText } from '../../domain/notes';
 import type { NormalizeReport } from '../../domain/schema';
 import { dayKey } from '../../domain/time';
 import { Button } from '../components/controls';
@@ -15,39 +17,52 @@ export function NoteSheet({ id }: { id: string | null }) {
   const store = useStore();
   const ui = useUi();
   const note = id ? data.notes.find(n => n.id === id) : undefined;
-  const [text, setText] = useState(note?.text ?? data.noteDraft);
+  const [parts, setParts] = useState(() => noteParts(note?.text ?? data.noteDraft));
   const [editing, setEditing] = useState(!note);
   const [error, setError] = useState('');
+  const body = useRef<HTMLTextAreaElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (note) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      if (text !== store.get().data.noteDraft) store.act(d => { d.noteDraft = text; }, { undoable: false });
+      const draft = noteText(parts.title, parts.body);
+      if (draft !== store.get().data.noteDraft) store.act(d => { d.noteDraft = draft; }, { undoable: false });
     }, 500);
     return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [text]);
+  }, [parts]);
   if (id && !note) return null;
   const linked = note?.itemId ? data.items.find(i => i.id === note.itemId) : undefined;
+  const edit = (patch: Partial<typeof parts>) => { setParts({ ...parts, ...patch }); setError(''); };
   const save = (e?: Event) => {
     e?.preventDefault();
-    if (!text.trim()) return setError(t.problems['note-empty']());
-    store.act(d => act.saveNote(d, id, text), { message: t.capture.noteSaved });
+    if (!noteText(parts.title, parts.body)) return setError(t.problems['note-empty']());
+    store.act(d => act.saveNote(d, id, parts.title, parts.body), { message: t.capture.noteSaved });
     ui.close();
   };
+  const shown = note && noteParts(note.text);
   return (
     <Sheet title={note ? t.noteSheet.title : t.noteSheet.newNote} subtitle={note ? t.noteSheet.edited(inlineDay(dayKey(new Date(note.updatedAt)), today)) : t.common.draftsKept}
       onClose={ui.close} footer={editing ? <Button variant="primary" type="submit" form="note-form" class="grow">{t.capture.saveNote}</Button> : undefined}>
       {editing ? (
-        <form id="note-form" onSubmit={save}>
+        <form id="note-form" class="note-editor" onSubmit={save}>
+          <label class="sr-only" for="note-title">{t.noteSheet.noteTitle}</label>
+          {/* Enter in the title moves on to the body, as the title is one line. */}
+          <input id="note-title" class="note-title-input" data-autofocus maxLength={LIMITS.title} placeholder={t.noteSheet.noteTitle}
+            enterKeyHint="next" autoComplete="off" value={parts.title}
+            onInput={e => edit({ title: (e.target as HTMLInputElement).value })}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); body.current?.focus(); } }} />
           <label class="sr-only" for="note-text">{t.common.note}</label>
-          <textarea id="note-text" class="capture-note" data-autofocus rows={8} maxLength={10000} placeholder={t.common.notePlaceholder}
-            value={text} onInput={e => { setText((e.target as HTMLTextAreaElement).value); setError(''); }} />
+          <textarea ref={body} id="note-text" class="capture-note note-body-input" rows={8} maxLength={10000} placeholder={t.common.notePlaceholder}
+            value={parts.body} onInput={e => edit({ body: (e.target as HTMLTextAreaElement).value })} />
           {error && <p class="field-error" role="alert">{error}</p>}
         </form>
       ) : (
         <>
-          <div class="note-body"><Linkified text={note!.text} /></div>
+          <div class="note-body">
+            {shown!.title && <h3 class="note-heading"><Linkified inline text={shown!.title} /></h3>}
+            {shown!.body && <Linkified text={shown!.body} />}
+          </div>
           <div class="action-grid">
             <Button variant="soft" icon="edit" onClick={() => setEditing(true)}>{t.common.edit}</Button>
             {linked ? (

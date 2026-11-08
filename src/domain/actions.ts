@@ -1,4 +1,5 @@
 import { ACCENTS, LANGUAGES, LIMITS, newItem, THEMES } from './defaults';
+import { noteText } from './notes';
 import { periodsInUse, periodsProblem, retimeClasses } from './periods';
 import { ProblemError } from './problems';
 import { nowIso, uid } from './time';
@@ -57,9 +58,10 @@ export function deleteItem(d: PlannerData, id: string) {
   for (const note of d.notes) if (note.itemId === id) delete note.itemId;
 }
 
-export function saveNote(d: PlannerData, id: string | null, text: string): Note {
-  const body = text.trim();
-  if (!body) throw new ActionError({ code: 'note-empty' });
+/** Saves a note's title and body as one text (see `noteText`). */
+export function saveNote(d: PlannerData, id: string | null, title: string, content: string): Note {
+  const body = noteText(title, content);
+  if (!body.trim()) throw new ActionError({ code: 'note-empty' });
   if (body.length > LIMITS.text) throw new ActionError({ code: 'note-too-long' });
   const at = nowIso();
   if (id) {
@@ -87,7 +89,7 @@ export function noteToTodo(d: PlannerData, noteId: string): Item {
   const linked = note.itemId && d.items.find(i => i.id === note.itemId);
   if (linked) return linked;
   const firstLine = note.text.trim().split('\n')[0].slice(0, LIMITS.title).trim();
-  const item = addItem(d, newItem(firstLine || 'Note', { details: note.text }));
+  const item = addItem(d, newItem(firstLine || 'Note', { details: note.text.trim() }));
   note.itemId = item.id;
   return item;
 }

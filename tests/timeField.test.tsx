@@ -36,6 +36,20 @@ describe('time field', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
   });
 
+  it('scrolls the wheels into view as they open', async () => {
+    const scrolled = vi.fn();
+    const before = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      render(<Harness initial="08:00" />);
+      fireEvent.click(field());
+      await vi.waitFor(() => expect(scrolled).toHaveBeenCalledWith({ block: 'nearest', behavior: 'smooth' }));
+      expect(scrolled.mock.contexts[0]).toBe(screen.getByRole('group', { name: 'Starts' }));
+    } finally {
+      Element.prototype.scrollIntoView = before;
+    }
+  });
+
   it('settles on the row a scroll stops at', () => {
     vi.useFakeTimers();
     const onValue = vi.fn();

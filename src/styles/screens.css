@@ -917,6 +917,11 @@
   overflow-wrap: anywhere;
 }
 
+.note-preview.is-untitled {
+  font-size: var(--fs-base);
+  color: var(--text);
+}
+
 .note-meta {
   display: flex;
   align-items: center;
@@ -945,6 +950,35 @@
 .note-body .linkified {
   font-size: var(--fs-base);
   color: var(--text);
+}
+
+.note-body .note-heading {
+  margin: 0 0 var(--space-2);
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.note-body .note-heading:last-child {
+  margin-bottom: 0;
+}
+
+.note-body .note-heading .linkified {
+  font-size: inherit;
+}
+
+/* The title is its own line above the body, in the type the note card and the note show it in. */
+.note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.note-title-input {
+  min-height: 52px;
+  font-size: 19px;
+  font-weight: 650;
+  border-radius: var(--radius);
 }
 
 /* ——— Sheets content ——— */

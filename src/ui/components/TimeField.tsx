@@ -49,6 +49,14 @@ export function TimeField({ id, value, onChange, label, optional, disabled, star
     setOpen(!open);
   };
 
+  // The wheels open under the field, often below the fold of a sheet: bring them on screen.
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const frame = requestAnimationFrame(() => panel.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }));
+    return () => cancelAnimationFrame(frame);
+  }, [isOpen]);
+
   return (
     <div class="time-field">
       <button id={id} type="button" class={`time-input ${shown ? '' : 'is-empty'}`} disabled={disabled}
@@ -58,7 +66,7 @@ export function TimeField({ id, value, onChange, label, optional, disabled, star
         <Icon name="clock" size={18} />
       </button>
       {isOpen && (
-        <div id={panelId} class="time-panel" role="group" aria-label={label}>
+        <div ref={panel} id={panelId} class="time-panel" role="group" aria-label={label}>
           <div class="time-wheels">
             {prefers24h
               ? <Wheel label={t.controls.hour} values={HOURS_24} value={hour24} format={pad} onChange={h => set(h * 60 + current() % 60)} />

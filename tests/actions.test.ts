@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as act from '../src/domain/actions';
+import { noteParts } from '../src/domain/notes';
 import { data, TODAY, todo, weekly } from './helpers';
 
 describe('to-dos', () => {
@@ -51,19 +52,32 @@ describe('notes', () => {
   it('saves, edits and turns a note into a to-do once', () => {
     const d = data();
     d.noteDraft = 'draft';
-    const note = act.saveNote(d, null, 'Ask about research\nhttps://example.edu/r');
+    const note = act.saveNote(d, null, 'Ask about research', 'https://example.edu/r');
     expect(d.noteDraft).toBe('');
     const item = act.noteToTodo(d, note.id);
     expect(item).toMatchObject({ title: 'Ask about research', estimate: null, important: false, urgent: false });
     expect(item.details).toContain('https://example.edu/r');
     expect(act.noteToTodo(d, note.id).id).toBe(item.id);
     expect(d.items).toHaveLength(1);
-    expect(() => act.saveNote(d, null, '   ')).toThrow(act.ActionError);
+    expect(() => act.saveNote(d, null, '   ', '\n ')).toThrow(act.ActionError);
+  });
+
+  it('keeps the title apart from the body, and a note without a title has none', () => {
+    const d = data();
+    const note = act.saveNote(d, null, '  Club  poster ', '\n\nColours\n  - blue\n\n');
+    expect(note.text).toBe('Club poster\nColours\n  - blue');
+    expect(noteParts(note.text)).toEqual({ title: 'Club poster', body: 'Colours\n  - blue' });
+    const untitled = act.saveNote(d, null, '', 'Buy chalk\nand tape');
+    expect(untitled.text).toBe('\nBuy chalk\nand tape');
+    expect(noteParts(untitled.text)).toEqual({ title: '', body: 'Buy chalk\nand tape' });
+    expect(act.noteToTodo(d, untitled.id)).toMatchObject({ title: 'Buy chalk', details: 'Buy chalk\nand tape' });
+    // Notes from before titles had their own field read the same way: the first line is the title.
+    expect(noteParts('Ask about research\nhttps://example.edu/r')).toEqual({ title: 'Ask about research', body: 'https://example.edu/r' });
   });
 
   it('deleting a to-do unlinks its note instead of deleting it', () => {
     const d = data();
-    const note = act.saveNote(d, null, 'Idea');
+    const note = act.saveNote(d, null, 'Idea', '');
     const item = act.noteToTodo(d, note.id);
     act.deleteItem(d, item.id);
     expect(d.notes[0].itemId).toBeUndefined();

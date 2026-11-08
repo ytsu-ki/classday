@@ -7,8 +7,11 @@ import type { Clock, DateKey, PlannerData } from './types';
  * replaces all pending ones with this list whenever the data changes, so nothing goes stale.
  */
 export type Reminder =
-  | { kind: 'deadline'; id: number; at: Date; itemId: string; due: DateKey; dueTime?: Clock }
+  | { kind: 'deadline'; id: number; at: Date; itemId: string; due: DateKey; dueTime?: Clock; soon?: true }
   | { kind: 'event'; id: number; at: Date; eventId: string; day: DateKey };
+
+/** A deadline with a time of day also gets a reminder this many minutes before it. */
+export const DUE_SOON = 60;
 
 /** Android notification ids are 32-bit; a stable hash keeps each reminder's id the same. */
 function idFor(key: string): number {
@@ -31,14 +34,23 @@ export function upcomingReminders(data: PlannerData, now: Date, horizonDays = 14
   const out: Reminder[] = [];
 
   if (r.deadlines) {
+    const minutes = (n: number) => n * 60_000;
     for (const item of data.items) {
       if (item.status !== 'open' || !item.due || item.due < today) continue;
-      // The usual lead time; if that moment has passed, the morning of the due day; else nothing.
+      const base = { kind: 'deadline', itemId: item.id, due: item.due, dueTime: item.dueTime } as const;
+      // A time of day: a reminder an hour before it, so a deadline later today is never missed.
+      const deadline = item.dueTime ? moment(item.due, item.dueTime) : null;
+      const soon = deadline && new Date(deadline.getTime() - minutes(DUE_SOON));
+      const soonKept = !!soon && soon > now && dayKey(soon) <= last;
+      if (soonKept) out.push({ ...base, id: idFor(`deadline-soon|${item.id}|${item.due}|${item.dueTime}`), at: soon, soon: true });
+      // The usual lead time at the reminder time; if that has passed, the morning of the due day.
       let at = moment(addDays(item.due, -r.deadlineDays), r.at);
       if (at <= now) at = moment(item.due, r.at);
       if (at <= now || dayKey(at) > last) continue;
-      if (item.dueTime && at >= moment(item.due, item.dueTime)) continue;
-      out.push({ kind: 'deadline', id: idFor(`deadline|${item.id}|${item.due}`), at, itemId: item.id, due: item.due, dueTime: item.dueTime });
+      if (deadline && at >= deadline) continue;
+      // Within the hour before the reminder an hour ahead, that one is enough.
+      if (soonKept && at.getTime() > soon.getTime() - minutes(DUE_SOON)) continue;
+      out.push({ ...base, id: idFor(`deadline|${item.id}|${item.due}`), at });
     }
   }
 

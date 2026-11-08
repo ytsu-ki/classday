@@ -118,7 +118,7 @@ describe('store', () => {
   it('turns rule violations into a friendly message without changing data', () => {
     const store = new Store(initialData(), null, clock);
     const before = store.get().data;
-    store.act(d => act.saveNote(d, null, ''));
+    store.act(d => act.saveNote(d, null, '', ''));
     expect(store.get().data).toBe(before);
     expect(store.get().toast).toMatchObject({ tone: 'error', message: 'Write something first.' });
   });

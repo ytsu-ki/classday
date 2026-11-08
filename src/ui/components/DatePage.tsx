@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
+import { useAppState } from '../../app/context';
 import type { Clock, DateKey } from '../../domain/types';
 import { t } from '../../i18n';
 import { Calendar } from './Calendar';
@@ -24,6 +25,8 @@ export interface Page { title: string; body: ComponentChildren; footer: Componen
  */
 export function useDatePage(today: DateKey): { page: Page | null; open: (request: Request) => void } {
   const [request, setRequest] = useState<Request | null>(null);
+  // A time starts at the start of the day, as set in Settings, and goes forward from there.
+  const dayStart = useAppState().data.settings.dayStart;
   if (!request) return { page: null, open: setRequest };
   const close = () => setRequest(null);
   return {
@@ -36,7 +39,7 @@ export function useDatePage(today: DateKey): { page: Page | null; open: (request
           <Calendar value={request.date} today={today} min={request.min} onChange={date => setRequest({ ...request, date })} />
           {request.withTime && (
             <Field label={t.calendar.time}>
-              {fid => <TimeField id={fid} label={t.calendar.time} optional start="23:00" value={request.time ?? ''}
+              {fid => <TimeField id={fid} label={t.calendar.time} optional start={dayStart} value={request.time ?? ''}
                 onChange={v => setRequest({ ...request, time: v || undefined })} />}
             </Field>
           )}

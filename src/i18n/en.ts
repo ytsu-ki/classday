@@ -294,7 +294,7 @@ export const en = {
     channel: 'Reminders',
     off: 'Off',
     deadlines: 'Before a deadline',
-    deadlinesHint: 'For to-dos that aren’t done yet.',
+    deadlinesHint: 'For to-dos that aren’t done yet. One due at a set time is also reminded an hour before.',
     lead: { 0: 'On the day', 1: '1 day before', 2: '2 days before' },
     at: 'Reminder time',
     atHint: 'Deadline reminders, and those for all-day events, arrive at this time.',
@@ -308,6 +308,12 @@ export const en = {
     notNow: 'Not now',
     dueBody: (due: string) => `${due}.`,
     eventBody: (when: string, where: string, sameDay: boolean) => `${sameDay ? 'Today' : 'Tomorrow'} ${when}${where ? ` · ${where}` : ''}`,
+    testSend: 'Send a test notification',
+    testTitle: 'Test reminder',
+    testBody: 'Reminders can reach you on this phone.',
+    testSent: (seconds: number) => `A test notification arrives in ${seconds} seconds. Leave the app to see it come.`,
+    testFailed: 'Couldn’t send a test notification. Check that notifications are on for Classday.',
+    background: 'No reminders arriving? Some phones stop apps in the background. In the phone’s settings, let Classday start on its own and run in the background.',
   },
 
   appearance: {
@@ -462,6 +468,7 @@ export const en = {
   noteSheet: {
     title: 'Note',
     newNote: 'New note',
+    noteTitle: 'Title',
     edited: (day: string) => `Edited ${day}`,
     openTodo: 'Open to-do',
     makeTodo: 'Make it a to-do',

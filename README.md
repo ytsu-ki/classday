@@ -16,8 +16,8 @@
 - **今天。** 整天按同一时间比例显示，小时刻度在左侧：日程、用餐和空闲时间都按实际长短显示，当前时间有一条线标出。已经过去的时段留在原处，颜色变淡。左右滑动切换到前一天或后一天。
 - **本周。** 课表网格：每天一列，左侧是节次和时间（还没有设置上课时间时显示小时），每个日程有自己的柔和颜色，全天日程显示在日期行下方，顶部显示教学周。相邻的课无缝衔接。左右滑动切换周。
 - **上课时间。** 在 *设置 → 课表 → 上课时间* 里按你们学校的作息填写每一节的开始和结束时间。改“每节时长”或“课间”会一次调整所有节次；调整某一节时，它之后直到午饭或晚饭前的节次会一起移动，所以换夏令时、冬令时作息只需要改一处。按节次导入的课程会记住自己的节次，随上课时间一起调整。
-- **提醒。** 待办截止前（当天，或提前一两天）以及设了提醒的日程开始前发出通知。应用关闭时也能收到。
-- **笔记。** 快速记笔记，支持草稿恢复、搜索、可点击的链接，以及保留完整内容的“转成待办”。
+- **提醒。** 待办截止前（当天，或提前一两天）发出通知，设了截止时间的待办还会在截止前1小时再提醒一次；设了提醒的日程开始前也会通知。应用关闭时也能收到，*设置 → 提醒* 里可以发一条测试通知。
+- **笔记。** 快速记笔记，标题和正文分开写，支持草稿恢复、搜索、可点击的链接，以及保留完整内容的“转成待办”。
 - **导入课表。** **从文件导入**教务系统导出的 PDF、Excel（`.xlsx`）、保存的网页或 `.ics` 日历，或者粘贴、打开文字课程列表。每项变化都会先让你核对（把错的去掉），最近一次导入可以撤销。单独取消某一次课（“这次取消”）不会影响整个系列。
 - **备份。** 导出或恢复一个 JSON 文件。设备上自动保留最近七天的每日副本，用于恢复。
 - **简体中文和英文。** *设置 → 外观 → 语言*：*跟随系统*、*English* 或简体中文。所有内容一起切换，包括日期、时长和提醒。在 Android 13 及以上版本中，应用也会出现在系统的“应用语言”设置里，在那里做的修改同样生效。
@@ -106,7 +106,7 @@ npm run android:test
 
 ## 局限
 
-- 提醒使用安卓的非精确闹钟，可能晚到几分钟；手机的省电设置可能让它更晚。
+- 提醒使用安卓的非精确闹钟，可能晚到几分钟；手机的省电设置可能让它更晚。有些手机会停止后台应用，需要在系统设置中允许课日自启动和后台运行。
 - 文件读取针对教务系统的表格式课表；特殊版式可能需要改为粘贴文字。旧版二进制 `.xls` 需要先另存为 `.xlsx`。
 - 一次只用一台设备：没有同步。换手机时用备份文件迁移。
 
@@ -132,8 +132,8 @@ No account, no server, no tracking. Everything stays on the phone unless you exp
 - **Today.** The whole day on one time scale, the hours down the side: events, meals and free time each as tall as they last, and a line at the current time. Earlier hours stay in place, quieter. Swipe sideways for the next or previous day.
 - **Week.** A timetable grid: a column per day, the periods with their times down the side (or hours, until class times are set), each event in its own soft color, all-day events under the day row, and the semester week number on top. Back-to-back classes sit flush. Swipe sideways for the next or previous week.
 - **Class times.** *Settings → Timetable → Class times* holds when each period starts and ends at your school. Class length and break change every period at once; moving one period moves the ones after it up to lunch or dinner, so a switch to summer or winter hours is one change. Classes imported by period remember their periods and move with the class times.
-- **Reminders.** Notifications before a to-do's deadline (on the day, or one or two days before) and before any event that asks for one. They arrive while the app is closed.
-- **Notes.** Quick notes with draft recovery, search, tappable links, and "Make it a to-do" that keeps the whole note.
+- **Reminders.** Notifications before a to-do's deadline (on the day, or one or two days before), again an hour before a deadline with a time, and before any event that asks for one. They arrive while the app is closed, and *Settings → Reminders* can send a test notification.
+- **Notes.** Quick notes with a title apart from the body, draft recovery, search, tappable links, and "Make it a to-do" that keeps the whole note.
 - **Timetable import.** **From a file**: the PDF, Excel file (`.xlsx`), saved web page or `.ics` calendar from your school's academic system; or paste or open a text list of classes. Every change is reviewed first (leave out anything wrong), and the last import can be undone. Cancel a single class ("Not happening this time") without touching the series.
 - **Backups.** Export and restore one JSON file. Seven daily automatic copies on the device for recovery.
 - **English and Simplified Chinese.** *Settings → Appearance → Language*: *System* (the phone's language), *English* or Simplified Chinese. Everything switches at once, including dates, durations and reminders. On Android 13+ the app also appears in the phone's own per-app language settings, and a change made there is picked up.
@@ -222,7 +222,7 @@ Classday doesn't sign in to school websites: academic systems differ too much, s
 
 ## Limits
 
-- Reminders use Android's inexact alarms, so one can arrive a few minutes late; the phone's battery settings can delay it further.
+- Reminders use Android's inexact alarms, so one can arrive a few minutes late; the phone's battery settings can delay it further. Some phones stop apps in the background unless Classday may start on its own and run in the background.
 - The file readers know grid timetables from academic systems; an unusual layout may need the text pasted instead. An older binary `.xls` needs saving as `.xlsx` first.
 - One device at a time: there is no sync. Move between phones with a backup file.
 

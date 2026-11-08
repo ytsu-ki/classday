@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { useAppState, useUi } from '../../app/context';
+import { noteParts } from '../../domain/notes';
 import { dayKey } from '../../domain/time';
 import { Button, Empty } from '../components/controls';
 import { Icon } from '../components/Icon';
@@ -29,7 +30,7 @@ export function NotesScreen() {
       {data.noteDraft.trim() && (
         <button type="button" class="draft-row" onClick={() => ui.open({ type: 'note', id: null })}>
           <Icon name="edit" size={18} />
-          <span class="grow"><strong>{t.notes.unfinished}</strong><span>{data.noteDraft.slice(0, 80)}</span></span>
+          <span class="grow"><strong>{t.notes.unfinished}</strong><span>{data.noteDraft.trim().replace(/\s+/g, ' ').slice(0, 80)}</span></span>
           <span class="muted">{t.notes.continue}</span>
         </button>
       )}
@@ -52,13 +53,14 @@ export function NotesScreen() {
       ) : (
         <ul class="note-grid">
           {notes.map(n => {
-            const [first, ...rest] = n.text.split('\n');
+            const { title, body } = noteParts(n.text);
+            const preview = body.replace(/\s+/g, ' ');
             const linked = n.itemId ? items.get(n.itemId) : undefined;
             return (
               <li key={n.id}>
                 <button type="button" class="note-card" onClick={() => ui.open({ type: 'note', id: n.id })}>
-                  <strong>{first}</strong>
-                  {rest.join(' ').trim() && <span class="note-preview">{rest.join(' ').trim()}</span>}
+                  {title && <strong>{title}</strong>}
+                  {preview && <span class={`note-preview ${title ? '' : 'is-untitled'}`}>{preview}</span>}
                   <span class="note-meta">
                     {relativeDay(dayKey(new Date(n.updatedAt)), today)}
                     {linked && <span class="badge"><Icon name="check" size={12} /> {t.notes.todoBadge}</span>}

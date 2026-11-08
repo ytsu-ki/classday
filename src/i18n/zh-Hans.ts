@@ -228,7 +228,7 @@ export const zhHans: Messages = {
     channel: '提醒',
     off: '已关闭',
     deadlines: '截止日期前提醒',
-    deadlinesHint: '针对还没完成的待办。',
+    deadlinesHint: '针对还没完成的待办。设了截止时间的，还会在截止前1小时提醒。',
     lead: { 0: '当天', 1: '提前1天', 2: '提前2天' },
     at: '提醒时间',
     atHint: '截止提醒和全天日程的提醒会在这个时间到达。',
@@ -242,6 +242,12 @@ export const zhHans: Messages = {
     notNow: '暂不',
     dueBody: (due: string) => `${due}。`,
     eventBody: (when: string, where: string, sameDay: boolean) => `${sameDay ? '今天' : '明天'} ${when}${where ? ` · ${where}` : ''}`,
+    testSend: '发送测试通知',
+    testTitle: '测试提醒',
+    testBody: '提醒可以在这台手机上正常到达。',
+    testSent: (seconds: number) => `测试通知将在${seconds}秒后到达，可以先回到桌面看看。`,
+    testFailed: '没能发出测试通知。请检查课日的通知是否已打开。',
+    background: '收不到提醒？部分手机会限制后台应用，请在系统设置中允许课日自启动和后台运行。',
   },
 
   appearance: {
@@ -394,6 +400,7 @@ export const zhHans: Messages = {
   noteSheet: {
     title: '笔记',
     newNote: '新笔记',
+    noteTitle: '标题',
     edited: (day: string) => `${day}编辑`,
     openTodo: '打开待办',
     makeTodo: '转成待办',

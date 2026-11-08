@@ -174,7 +174,7 @@ describe('the interface in Simplified Chinese', () => {
 
   it('shows problems from the domain in the chosen language', () => {
     const store = mount(busyPlanner('zh-Hans'));
-    store.act(d => act.saveNote(d, null, '   '));
+    store.act(d => act.saveNote(d, null, '   ', ''));
     expect(store.get().toast).toMatchObject({ tone: 'error', message: '先写点什么吧。' });
   });
 });

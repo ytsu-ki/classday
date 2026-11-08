@@ -10,11 +10,12 @@ import { dayKey } from '../../domain/time';
 import { inlineDay, linkParts } from '../format';
 import { TodoFields, type TodoDraft } from './TodoFields';
 
-export function Linkified({ text }: { text: string }) {
+export function Linkified({ text, inline }: { text: string; inline?: boolean }) {
+  const Tag = inline ? 'span' : 'p';
   return (
-    <p class="linkified">
+    <Tag class="linkified">
       {linkParts(text).map(p => (p.href ? <a href={p.href} target="_blank" rel="noopener noreferrer">{p.text}</a> : p.text))}
-    </p>
+    </Tag>
   );
 }
 

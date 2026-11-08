@@ -42,17 +42,19 @@ export const longDate = (day: DateKey) => t.format.longDate(dateOf(day));
 export const shortDate = (day: DateKey) => t.format.shortDate(dateOf(day));
 export const dayChip = (day: DateKey) => t.format.dayChip(dateOf(day));
 
-/** "Today", "Tomorrow", "Thu", or "12 Nov" for dates further out. */
+/**
+ * "Today", "Tomorrow", "Yesterday", or a date such as "12 Nov". Other days get their date, not
+ * a weekday name: "Thu" can't tell this week's Thursday from next week's.
+ */
 export function relativeDay(day: DateKey, today: DateKey): string {
   const diff = daysBetween(today, day);
   if (diff === 0) return t.format.today;
   if (diff === 1) return t.format.tomorrow;
   if (diff === -1) return t.format.yesterday;
-  if (diff > 1 && diff < 7) return weekdayAbbr(day);
   return shortDate(day);
 }
 
-/** relativeDay for use mid-sentence: "today", "tomorrow", "Thu", "12 Nov". */
+/** relativeDay for use mid-sentence: "today", "tomorrow", "12 Nov". */
 export function inlineDay(day: DateKey, today: DateKey): string {
   const diff = daysBetween(today, day);
   if (diff === 0) return t.format.todayInline;

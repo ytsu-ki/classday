@@ -34,6 +34,41 @@ describe('deadline reminders', () => {
   });
 });
 
+describe('reminders before a due time', () => {
+  it('come an hour before it, so a deadline later today still gets one', () => {
+    const afternoon = new Date('2026-10-13T15:00:00');
+    const d = data({ items: [todo({ id: 'lab', due: '2026-10-13', dueTime: '18:00' })] });
+    const [only, ...rest] = upcomingReminders(d, afternoon);
+    expect(rest).toEqual([]);
+    expect(only).toMatchObject({ kind: 'deadline', itemId: 'lab', soon: true });
+    expect(only.at.getTime()).toBe(local('2026-10-13T17:00:00'));
+    // Less than an hour to go: nothing left to remind of.
+    expect(upcomingReminders(d, new Date('2026-10-13T17:20:00'))).toEqual([]);
+  });
+
+  it('come as well as the usual one days ahead, each with its own id', () => {
+    const d = data({ items: [todo({ id: 'essay', due: '2026-10-16', dueTime: '18:00' })] });
+    const reminders = upcomingReminders(d, NOW);
+    expect(reminders.map(r => r.at.getTime())).toEqual([local('2026-10-15T09:00:00'), local('2026-10-16T17:00:00')]);
+    expect(new Set(reminders.map(r => r.id)).size).toBe(2);
+    expect(upcomingReminders(d, NOW).map(r => r.id)).toEqual(reminders.map(r => r.id));
+  });
+
+  it('take the place of the usual one when that would come within the hour before', () => {
+    const d = data({ items: [todo({ due: '2026-10-14', dueTime: '09:30' })] });
+    d.reminders.deadlineDays = 0;
+    const reminders = upcomingReminders(d, NOW);
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0].at.getTime()).toBe(local('2026-10-14T08:30:00'));
+  });
+
+  it('stay off with deadline reminders', () => {
+    const d = data({ items: [todo({ due: '2026-10-13', dueTime: '18:00' })] });
+    d.reminders.deadlines = false;
+    expect(upcomingReminders(d, NOW)).toEqual([]);
+  });
+});
+
 describe('event reminders', () => {
   it('come before each occurrence an event asks for, and not for others', () => {
     const d = data({ events: [weekly('Physics', 3, '14:00', '15:40', { remind: 30 }), weekly('Chemistry', 4, '10:00', '11:00')] });

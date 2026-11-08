@@ -4,7 +4,7 @@ import { App } from '../src/app/App';
 import { Store } from '../src/app/store';
 import { initialData } from '../src/domain/defaults';
 import type { PlannerData } from '../src/domain/types';
-import { prefers24h, time, timeParts } from '../src/ui/format';
+import { dueLabel, prefers24h, relativeDay, time, timeParts } from '../src/ui/format';
 import { once, todo, weekly, withClassTimes } from './helpers';
 
 const clock = () => new Date('2026-10-13T09:00:00'); // Tuesday morning
@@ -62,7 +62,8 @@ describe('to-dos', () => {
     addTodo();
     const input = screen.getByPlaceholderText('Add a to-do…');
     type(input, 'Lab report fri 2h important');
-    expect(screen.getByRole('button', { name: /Remove Due Fri/ })).toBeTruthy();
+    // A day later this week shows its date: a weekday name alone could be this week or next.
+    expect(screen.getByRole('button', { name: /Remove Due 16 Oct/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Important' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('button', { name: 'Urgent' }).getAttribute('aria-pressed')).toBe('false');
     fireEvent.submit(input.closest('form')!);
@@ -70,6 +71,13 @@ describe('to-dos', () => {
     await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/Added to your to-dos/));
     nav('Today');
     expect(screen.queryByText('Lab report')).toBeNull();
+  });
+
+  it('name a deadline today or tomorrow, and give every other day its date', () => {
+    const today = '2026-10-13';
+    expect(['2026-10-13', '2026-10-14', '2026-10-12', '2026-10-15', '2026-10-19', '2026-10-22'].map(d => relativeDay(d, today)))
+      .toEqual(['Today', 'Tomorrow', 'Yesterday', '15 Oct', '19 Oct', '22 Oct']);
+    expect(dueLabel('2026-10-16', '18:00', today)).toBe(`Due 16 Oct ${time(18 * 60)}`);
   });
 
   it('start with nothing set, and take a deadline from the calendar', () => {
@@ -85,6 +93,9 @@ describe('to-dos', () => {
     expect((screen.getByRole('button', { name: '12 October' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
     fireEvent.click(screen.getByRole('button', { name: '3 November' }));
+    // A deadline's time starts at the start of the day, not late at night.
+    fireEvent.click(screen.getByRole('button', { name: /^Time/ }));
+    expect(screen.getByRole('button', { name: /^Time/ }).getAttribute('aria-label')).toBe(`Time: ${time(8 * 60)}`);
     setTime(/^Time/, '18:00');
     fireEvent.click(within(document.querySelector('.sheet-foot') as HTMLElement).getByRole('button', { name: 'Done' }));
     expect(screen.getByRole('button', { name: /^Deadline: 3 Nov/ })).toBeTruthy();
@@ -312,7 +323,41 @@ describe('other screens', () => {
     nav('Notes');
     fireEvent.click(screen.getByRole('button', { name: 'New note' }));
     type(screen.getByLabelText('Note'), 'Idea for the club poster');
-    await waitFor(() => expect(store.get().data.noteDraft).toBe('Idea for the club poster'), { timeout: 2000 });
+    await waitFor(() => expect(store.get().data.noteDraft).toBe('\nIdea for the club poster'), { timeout: 2000 });
+  });
+
+  it('writes a note’s title apart from its body, and shows them the same way after saving', () => {
+    const store = mount();
+    nav('Notes');
+    fireEvent.click(screen.getByRole('button', { name: 'New note' }));
+    const title = screen.getByLabelText('Title') as HTMLInputElement;
+    type(title, 'Club poster');
+    // Enter in the title goes on to the body instead of saving the note.
+    fireEvent.keyDown(title, { key: 'Enter' });
+    expect(document.activeElement).toBe(screen.getByLabelText('Note'));
+    expect(store.get().data.notes).toEqual([]);
+    type(screen.getByLabelText('Note'), 'Blue and white\nPrint 20');
+    fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+    expect(store.get().data.notes[0].text).toBe('Club poster\nBlue and white\nPrint 20');
+    const card = screen.getByRole('button', { name: /Club poster/ });
+    expect(card.querySelector('strong')!.textContent).toBe('Club poster');
+    expect(card.querySelector('.note-preview')!.textContent).toBe('Blue and white Print 20');
+    fireEvent.click(card);
+    expect(screen.getByRole('heading', { name: 'Club poster' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Club poster');
+    expect((screen.getByRole('textbox', { name: 'Note' }) as HTMLTextAreaElement).value).toBe('Blue and white\nPrint 20');
+  });
+
+  it('leaves a note without a title untitled, so its first line isn’t taken for one', () => {
+    const store = mount();
+    nav('Notes');
+    fireEvent.click(screen.getByRole('button', { name: 'New note' }));
+    type(screen.getByLabelText('Note'), 'Buy chalk\nand tape');
+    fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+    const card = screen.getByRole('button', { name: /Buy chalk/ });
+    expect(card.querySelector('strong')).toBeNull();
+    expect(store.get().data.notes[0].text).toBe('\nBuy chalk\nand tape');
   });
 
   it('rejects impossible day settings with a clear message', () => {

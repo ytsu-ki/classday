@@ -12,7 +12,7 @@ export interface TodoDraft {
   urgent: boolean;
 }
 
-/** "Tomorrow 18:00", "Thu", "12 Nov": a deadline in a few words. */
+/** "Tomorrow 18:00", "12 Nov": a deadline in a few words. */
 export const deadlineText = (due: DateKey, dueTime: Clock | undefined, today: DateKey) =>
   dueTime ? `${relativeDay(due, today)} ${clockTime(dueTime)}` : relativeDay(due, today);
 

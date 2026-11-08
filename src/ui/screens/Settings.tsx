@@ -7,7 +7,7 @@ import { settingsProblem } from '../../domain/schema';
 import type { LanguageChoice, Reminders, Settings, ThemeMode } from '../../domain/types';
 import { language as shown, LANGUAGE_NAMES, problemText, t } from '../../i18n';
 import { appVersion } from '../../platform/native';
-import { notificationPermission, requestNotifications, type NotificationPermission } from '../../platform/notifications';
+import { notificationPermission, requestNotifications, sendTestNotification, type NotificationPermission } from '../../platform/notifications';
 import { AccentPicker } from '../components/AccentPicker';
 import { Button, Field, IconButton, Segmented, Switch } from '../components/controls';
 import { Icon, type IconName } from '../components/Icon';
@@ -122,6 +122,9 @@ export function DayScreen() {
   );
 }
 
+/** Long enough to leave the app and see the test notification arrive from the background. */
+const TEST_SECONDS = 5;
+
 export function RemindersScreen() {
   const { data } = useAppState();
   const store = useStore();
@@ -132,6 +135,15 @@ export function RemindersScreen() {
   const allow = async () => {
     setPermission(await requestNotifications());
     change({ asked: true });
+  };
+  // Turning reminders on asks for notifications too, if the phone hasn't been asked yet.
+  const turn = (deadlines: boolean) => {
+    change({ deadlines });
+    if (deadlines && permission === 'prompt') void allow();
+  };
+  const test = async () => {
+    const sent = await sendTestNotification(t.reminders.testTitle, t.reminders.testBody, t.reminders.channel, TEST_SECONDS).catch(() => false);
+    store.showToast(sent ? t.reminders.testSent(TEST_SECONDS) : t.reminders.testFailed, sent ? 'info' : 'error');
   };
   const upcoming = upcomingReminders(data, new Date()).length;
 
@@ -147,7 +159,7 @@ export function RemindersScreen() {
           </div>
         )}
         <div class="form-stack">
-          <Switch checked={r.deadlines} onChange={v => change({ deadlines: v })} label={t.reminders.deadlines} hint={t.reminders.deadlinesHint} />
+          <Switch checked={r.deadlines} onChange={turn} label={t.reminders.deadlines} hint={t.reminders.deadlinesHint} />
           {r.deadlines && (
             <Segmented<'0' | '1' | '2'> size="sm" label={t.reminders.deadlines} value={String(r.deadlineDays) as '0' | '1' | '2'}
               onChange={v => change({ deadlineDays: Number(v) as Reminders['deadlineDays'] })}
@@ -159,6 +171,14 @@ export function RemindersScreen() {
           <p class="field-hint">{t.reminders.eventsHint}</p>
         </div>
       </section>
+      {permission === 'granted' && (
+        <section class="panel" aria-label={t.reminders.testSend}>
+          <div class="form-stack">
+            <Button variant="soft" icon="bell" onClick={() => void test()}>{t.reminders.testSend}</Button>
+            <p class="field-hint">{t.reminders.background}</p>
+          </div>
+        </section>
+      )}
     </SubPage>
   );
 }
