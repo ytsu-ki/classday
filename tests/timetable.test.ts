@@ -101,6 +101,34 @@ describe('merging imports', () => {
     expect(d.events[0].location).toBe('My room');
   });
 
+  it('remembers only what an import changed, and still undoes all of it', () => {
+    const d = initialData();
+    const own: FixedEvent = { ...course('Choir', { id: 'own', sourceKey: undefined, importGroup: undefined, weeks: undefined }) };
+    d.events = [own];
+    const first = [course('Math'), course('Art', { id: 'art', sourceKey: 'art' }), course('Lab', { id: 'lab', sourceKey: 'lab' })];
+    applyImport(d, first, GROUP, true);
+    const before = JSON.stringify(d.events);
+    // Math moves, Lab is gone, Music is new; Art and the student's own event are untouched.
+    applyImport(d, [course('Math', { location: 'Room 9' }), course('Art', { id: 'art', sourceKey: 'art' }), course('Music', { id: 'music', sourceKey: 'music' })], GROUP, true);
+    const history = d.timetable.lastImport!;
+    expect(history.before.map(e => e.title).sort()).toEqual(['Lab', 'Math']);
+    expect(history.after.map(e => e.title).sort()).toEqual(['Math', 'Music']);
+    expect(d.events.map(e => e.title).sort()).toEqual(['Art', 'Choir', 'Math', 'Music']);
+    expect(undoImport(d)).toBe(0);
+    expect(JSON.parse(JSON.stringify(d.events)).sort((a: FixedEvent, b: FixedEvent) => a.id.localeCompare(b.id)))
+      .toEqual(JSON.parse(before).sort((a: FixedEvent, b: FixedEvent) => a.id.localeCompare(b.id)));
+  });
+
+  it('still undoes an import remembered the earlier way, with every event listed', () => {
+    const d = initialData();
+    const old = course('Math'), kept = course('Art', { id: 'art', sourceKey: 'art' });
+    const now = course('Math', { location: 'Room 9' }), added = course('Music', { id: 'music', sourceKey: 'music' });
+    d.events = [now, kept, added].map(e => ({ ...e }));
+    d.timetable.lastImport = { before: [old, kept], after: [now, kept, added], at: '2026-10-19T08:00:00.000Z' };
+    expect(undoImport(d)).toBe(0);
+    expect(d.events).toEqual([old, kept]);
+  });
+
   it('keeps cancelled single classes when the timetable is imported again', () => {
     const d = initialData();
     applyImport(d, [course()], GROUP, false);
@@ -132,12 +160,31 @@ describe('merging imports', () => {
     const conflicts = importConflicts(d, [course('Math', { start: '09:30', end: '10:30' })]);
     expect([conflicts[0].first, conflicts[0].second].sort()).toEqual(['Math', 'Physics']);
   });
+
+  it('does not count an all-day event as overlapping a class', () => {
+    const d = initialData();
+    d.events = [{ ...course('Sports day', { id: 's', sourceKey: undefined, importGroup: undefined, weeks: undefined, allDay: true, start: '00:00', end: '23:59' }) }];
+    expect(importConflicts(d, [course('Math')])).toEqual([]);
+  });
 });
 
 const calendar = (rows: string) => `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Classday Test//EN\r\n${rows}\r\nEND:VCALENDAR`;
 const vevent = (fields: string) => `BEGIN:VEVENT\r\n${fields}\r\nEND:VEVENT`;
 
 describe('calendar files', () => {
+  it('finds nothing changed when the same calendar is imported again after a restart', () => {
+    const text = calendar(vevent('UID:a\r\nSUMMARY: Math \r\nDTSTART:20261019T090000\r\nDTEND:20261019T100000')
+      + '\r\n' + vevent('UID:b\r\nSUMMARY:Lab\r\nLOCATION:Room 2\r\nDTSTART:20261020T090000\r\nDTEND:20261020T100000'));
+    const read = () => parseIcs(text, { from: MONDAY, until: '2026-11-15', group: 'ics-test' });
+    const d = initialData();
+    applyImport(d, read(), 'ics-test', true);
+    expect(d.events.map(e => 'location' in e)).toEqual([false, true]);
+    // Stored data is read back through normalizeEvent, which trims and drops empty fields.
+    d.events = d.events.map(e => normalizeEvent(JSON.parse(JSON.stringify(e)))!);
+    const diff = diffImport(d, read(), 'ics-test');
+    expect([diff.unchanged.length, diff.updated.length, diff.added.length]).toEqual([2, 0, 0]);
+  });
+
   it('handles repeats, excluded weeks, moved lessons and time zones', () => {
     const text = calendar(
       vevent('UID:math\r\nSUMMARY:Math\r\nDTSTART;TZID=Asia/Shanghai:20261019T090000\r\nDTEND;TZID=Asia/Shanghai:20261019T100000\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\nEXDATE;TZID=Asia/Shanghai:20261026T090000')

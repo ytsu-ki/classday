@@ -41,7 +41,8 @@ export function CaptureSheet({ due: initialDue }: { due?: DateKey }) {
   const removeToken = (k: TokenKind) => {
     setIgnore(new Set([...ignore, k]));
     const next = { ...chosen };
-    if (k === 'due' || k === 'time') { delete next.due; delete next.dueTime; }
+    if (k === 'due') { delete next.due; delete next.dueTime; }
+    if (k === 'time') delete next.dueTime;
     if (k === 'duration') delete next.estimate;
     if (k === 'important') delete next.important;
     if (k === 'urgent') delete next.urgent;
@@ -57,8 +58,7 @@ export function CaptureSheet({ due: initialDue }: { due?: DateKey }) {
       details, estimate: draft.estimate, important: draft.important, urgent: draft.urgent,
       ...(draft.due ? { due: draft.due } : {}), ...(draft.due && draft.dueTime ? { dueTime: draft.dueTime } : {}),
     });
-    store.act(d => act.addItem(d, item), { message: t.capture.added });
-    ui.close();
+    if (store.act(d => act.addItem(d, item), { message: t.capture.added })) ui.close();
   };
 
   const tokenLabel = (k: TokenKind, raw: string) => {
@@ -80,7 +80,12 @@ export function CaptureSheet({ due: initialDue }: { due?: DateKey }) {
           <label class="sr-only" for="capture-title">{t.common.kinds.todo}</label>
           <input id="capture-title" class="capture-input" data-autofocus type="text" autocomplete="off" enterkeyhint="done"
             placeholder={t.capture.todoPlaceholder} value={text} maxLength={400}
-            onInput={e => { setText((e.target as HTMLInputElement).value); setError(''); }} />
+            onInput={e => {
+              const value = (e.target as HTMLInputElement).value;
+              setText(value);
+              if (!value.trim() && ignore.size) setIgnore(new Set());
+              setError('');
+            }} />
           {parsed.tokens.length > 0 && (
             <div class="chips understood" aria-label={t.capture.understood}>
               {parsed.tokens.map(token => (

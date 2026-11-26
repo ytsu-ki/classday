@@ -34,6 +34,8 @@ const paths = {
   shield: 'M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6z',
   timer: 'M12 8v5l2.5 1.5M9 2.5h6M12 5a8 8 0 100 16 8 8 0 000-16z',
   flag: 'M6 21V4.5M6 4.5h11.5l-2.5 4.25 2.5 4.25H6',
+  pin: 'M12 21s-6-5.2-6-10a6 6 0 1112 0c0 4.8-6 10-6 10zM12 11a2 2 0 100-4 2 2 0 000 4z',
+  book: 'M5 4.5A2.5 2.5 0 017.5 2H19v18H7.5A2.5 2.5 0 015 17.5zM8.5 2v18M12 7h4M12 11h3',
 } as const;
 
 export type IconName = keyof typeof paths;

@@ -40,7 +40,7 @@ if (typeof window !== 'undefined') {
     window.PointerEvent = PointerEvent as unknown as typeof window.PointerEvent;
   }
   // Preact listens for lower-case event names only where the element has the `on…` property.
-  for (const name of ['onpointerdown', 'onpointerup', 'onpointercancel'])
+  for (const name of ['onpointerdown', 'onpointermove', 'onpointerup', 'onpointercancel'])
     if (!(name in HTMLElement.prototype)) Object.defineProperty(HTMLElement.prototype, name, { value: null, writable: true, configurable: true });
   if (!window.requestAnimationFrame) window.requestAnimationFrame = (fn: FrameRequestCallback) => setTimeout(() => fn(0), 0) as unknown as number;
   window.scrollTo = () => {};

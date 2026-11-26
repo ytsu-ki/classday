@@ -15,7 +15,12 @@ export interface ImportDiff {
 
 // Cancelled single occurrences belong to the student, so they are not compared.
 const FIELDS = ['title', 'category', 'repeat', 'weekday', 'days', 'weeks', 'date', 'from', 'until', 'parity', 'start', 'end', 'periods', 'location', 'teacher'] as const;
-const signature = (e: FixedEvent) => JSON.stringify(FIELDS.map(k => e[k] ?? null));
+// Both sides are compared as they are stored, so an event saved and read back (trimmed, without
+// empty fields) still equals the same entry imported again.
+const signature = (e: FixedEvent) => {
+  const stored = normalizeEvent(e) ?? e;
+  return JSON.stringify(FIELDS.map(k => stored[k] ?? null));
+};
 
 export function diffImport(data: PlannerData, incoming: FixedEvent[], group: string): ImportDiff {
   if (!incoming.length || incoming.length > 2000 || incoming.some(e => e.importGroup !== group))
@@ -40,13 +45,19 @@ export function diffImport(data: PlannerData, incoming: FixedEvent[], group: str
 
 export function applyImport(data: PlannerData, incoming: FixedEvent[], group: string, removeMissing: boolean): ImportDiff {
   const diff = diffImport(data, incoming, group);
-  const before = data.events.map(e => ({ ...e }));
   const removed = new Set(removeMissing ? diff.removed.map(e => e.id) : []);
   const updates = new Map(diff.updated.map(x => [x.before.id, x.after]));
   const after = data.events.filter(e => !removed.has(e.id)).map(e => updates.get(e.id) ?? e).concat(diff.added);
   if (after.length > 2000) throw new ProblemError({ code: 'timetable-too-many' });
   data.events = after;
-  data.timetable.lastImport = { before, after: after.map(e => ({ ...e })), at: new Date().toISOString() };
+  // Only what changed is kept for undoing: the earlier form of updated and removed events, and
+  // the new form of updated and added ones. Everything else is as it was.
+  const copy = (e: FixedEvent) => ({ ...e });
+  data.timetable.lastImport = {
+    before: [...diff.updated.map(x => x.before), ...diff.removed.filter(e => removed.has(e.id))].map(copy),
+    after: [...diff.updated.map(x => x.after), ...diff.added].map(copy),
+    at: new Date().toISOString(),
+  };
   return diff;
 }
 
@@ -85,7 +96,8 @@ export function importConflicts(data: PlannerData, incoming: FixedEvent[]): Impo
   const out = new Map<string, ImportConflict>();
   for (let i = 0; i < days && out.size < 20; i++) {
     const date = addDays(first, i);
-    const rows = combined.filter(e => occurs(e, date));
+    // An all-day event (a holiday, a birthday) doesn't clash with a class.
+    const rows = combined.filter(e => !e.allDay && occurs(e, date));
     for (let a = 0; a < rows.length; a++)
       for (let b = a + 1; b < rows.length; b++)
         if (toMinutes(rows[a].start) < toMinutes(rows[b].end) && toMinutes(rows[a].end) > toMinutes(rows[b].start))

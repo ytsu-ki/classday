@@ -40,7 +40,6 @@ export const weekdayName = (day: DateKey) => t.format.weekday(dateOf(day));
 export const weekdayAbbr = (day: DateKey) => t.format.weekdayShort(dateOf(day));
 export const longDate = (day: DateKey) => t.format.longDate(dateOf(day));
 export const shortDate = (day: DateKey) => t.format.shortDate(dateOf(day));
-export const dayChip = (day: DateKey) => t.format.dayChip(dateOf(day));
 
 /**
  * "Today", "Tomorrow", "Yesterday", or a date such as "12 Nov". Other days get their date, not
@@ -63,17 +62,9 @@ export function inlineDay(day: DateKey, today: DateKey): string {
   return relativeDay(day, today);
 }
 
-/** "tomorrow at 9:00", mid-sentence. */
-export const dayAtTime = (day: DateKey, minute: number, today: DateKey) => t.format.dayAtTime(inlineDay(day, today), time(minute));
-
 function dueWhen(due: DateKey, dueTime: string | undefined, today: DateKey) {
   const day = inlineDay(due, today);
   return dueTime ? t.format.dayTime(day, clockTime(dueTime)) : day;
-}
-
-/** "due tomorrow 6 pm", "was due 23 Oct" — a phrase to place mid-sentence. */
-export function dueText(due: DateKey, dueTime: string | undefined, today: DateKey): string {
-  return t.format.dueText(dueWhen(due, dueTime, today), daysBetween(today, due) < 0);
 }
 
 /** "Due tomorrow 6 pm" — the same phrase as a label. */

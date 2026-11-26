@@ -203,9 +203,11 @@ describe('events', () => {
     expect(within(screen.getByRole('list', { name: 'All day' })).getByText('Sports day')).toBeTruthy();
   });
 
-  it('can start where free time was tapped', () => {
+  it('places a dashed draft slot on tapped free time before opening EventSheet', () => {
     mount({ ...initialData(), events: [weekly('Physics', 2, '14:00', '15:00')] });
     fireEvent.click(screen.getByRole('button', { name: `Add an event at ${time(15 * 60)}` }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`Create event for ${time(15 * 60)}`) }));
     expect(screen.getByRole('button', { name: /^Starts/ }).getAttribute('aria-label')).toBe(`Starts: ${time(15 * 60)}`);
   });
 
@@ -228,20 +230,19 @@ describe('today', () => {
     expect(screen.queryByText(/Nothing planned|Add something/)).toBeNull();
   });
 
-  it('draws the day to one scale: everything as tall as it lasts, placed at its time', () => {
+  it('draws the day on a compact elastic single-screen axis, with events larger than free gaps', () => {
     mount({ ...initialData(), events: [weekly('Physics', 2, '08:00', '08:45'), weekly('Chemistry', 2, '14:00', '15:30')] });
+    const dayHeight = parseFloat((document.querySelector('.day') as HTMLElement).style.height);
+    expect(dayHeight).toBeLessThanOrEqual(560);
     const box = (el: Element) => { const s = (el as HTMLElement).style; return { top: parseFloat(s.top) - 1, height: parseFloat(s.height) + 2 }; };
     const card = (name: string) => box(screen.getByRole('button', { name: new RegExp(`^${name}`) }).closest('li')!);
     const physics = card('Physics'), chemistry = card('Chemistry');
-    // 90 minutes is twice 45, and 14:00 sits six hours below 08:00 on the same scale.
-    expect(chemistry.height).toBeCloseTo(physics.height * 2);
-    expect(chemistry.top - physics.top).toBeCloseTo((physics.height / 45) * 6 * 60);
-    // Free time takes its own length too: 15:30 to the 18:00 dinner is 150 minutes.
-    const free = box(screen.getByRole('button', { name: `Add an event at ${time(15 * 60 + 30)}` }).closest('li')!);
-    expect(free.height).toBeCloseTo((physics.height / 45) * 150);
-    // The current time sits between the hours it falls between.
+    // 90 minutes of class stays twice the 45-minute class even as empty stretches compress.
+    expect(chemistry.height).toBeCloseTo(physics.height * 2, 0);
+    // The current time sits between the earlier Physics class and afternoon Chemistry class.
     const now = parseFloat((document.querySelector('.day-now') as HTMLElement).style.top);
-    expect(now).toBeCloseTo(physics.top + (physics.height / 45) * 60);
+    expect(now).toBeGreaterThan(physics.top + physics.height);
+    expect(now).toBeLessThan(chemistry.top);
   });
 
   it('moves between days with a swipe', () => {
@@ -271,12 +272,19 @@ describe('week', () => {
     // Only the school's own periods, with no times filled in from elsewhere.
     expect(grid.querySelectorAll('.wk-period')).toHaveLength(2);
     expect(within(grid).getByRole('button', { name: /^Physics · Tue/ }).textContent).toContain('B204');
-    // Only the cards take a tap: no current-time line, no hidden add zones, and the day row stays put.
+    // Day headers stay untappable and there is no current-time line; tapping empty column space places a draft slot before opening EventSheet.
     expect(within(grid).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual([expect.stringMatching(/^Physics · Tue/)]);
     expect(document.querySelector('.wk-now')).toBeNull();
     fireEvent.click(within(grid).getByText('Tue'));
     expect(screen.getByRole('heading', { name: 'Week 6' })).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
+    const thuCol = grid.querySelector('.wk-col[data-day="2026-10-15"]') as HTMLElement;
+    fireEvent.click(thuCol, { clientY: 0 });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(thuCol.querySelector('.draft-body')!);
+    expect(within(dialog()).getByRole('heading', { name: 'Add an event' })).toBeTruthy();
+    expect(within(dialog()).getByRole('button', { name: /^Date: 15 October/ })).toBeTruthy();
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Close' }));
     swipe(document.querySelector('.week-pane')!, 'left');
     expect(screen.getByRole('heading', { name: 'Week 7' })).toBeTruthy();
   });
@@ -307,15 +315,44 @@ describe('week', () => {
 });
 
 describe('other screens', () => {
-  it('turns a note into a to-do that keeps the whole note', () => {
-    const store = mount({ ...initialData(), notes: [{ id: 'n1', text: 'Ask about research\nhttps://example.edu/r', createdAt: '2026-10-12T10:00:00.000Z', updatedAt: '2026-10-12T10:00:00.000Z' }] });
+  it('organizes notes inside colored notebooks cleanly separated from to-dos', () => {
+    const store = mount({
+      ...initialData(),
+      notes: [{ id: 'n1', text: 'Ask about research\nhttps://example.edu/r', createdAt: '2026-10-12T10:00:00.000Z', updatedAt: '2026-10-12T10:00:00.000Z' }],
+    });
     nav('Notes');
+    // Note detail keeps links safe and has no "Make it a to-do" button.
     fireEvent.click(screen.getByRole('button', { name: /Ask about research/ }));
     expect(screen.getByRole('link', { name: 'https://example.edu/r' }).getAttribute('rel')).toContain('noopener');
-    fireEvent.click(screen.getByRole('button', { name: 'Make it a to-do' }));
-    const item = store.get().data.items[0];
-    expect(item.details).toContain('https://example.edu/r');
-    expect(store.get().data.notes[0].itemId).toBe(item.id);
+    expect(within(dialog()).queryByRole('button', { name: /to-do/i })).toBeNull();
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Close' }));
+
+    // Create a notebook with custom color and move the existing note into it.
+    fireEvent.click(screen.getByRole('button', { name: 'New notebook' }));
+    type(screen.getByLabelText('Notebook name'), 'Research');
+    fireEvent.click(screen.getByRole('radio', { name: 'Color 4' }));
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+    expect(store.get().data.notebooks[0]).toMatchObject({ name: 'Research', color: 3 });
+
+    // Open Quick notes shelf card, open n1, move it into Research, then return to shelf and open Research.
+    fireEvent.click(screen.getByRole('button', { name: /Quick notes/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Ask about research/ }));
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Research' }));
+    expect(store.get().data.notes[0].notebookId).toBe(store.get().data.notebooks[0].id);
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to notebooks' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Research/ }));
+    expect(screen.getByRole('heading', { name: 'Research' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Ask about research/ })).toBeTruthy();
+
+    // Deleting the notebook preserves the note in Quick notes.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit notebook' }));
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Delete' }));
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Delete' }));
+    expect(store.get().data.notebooks).toHaveLength(0);
+    expect(store.get().data.notes).toHaveLength(1);
+    expect(store.get().data.notes[0].notebookId).toBeUndefined();
   });
 
   it('keeps a half-written note as a draft', async () => {
@@ -324,6 +361,26 @@ describe('other screens', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New note' }));
     type(screen.getByLabelText('Note'), 'Idea for the club poster');
     await waitFor(() => expect(store.get().data.noteDraft).toBe('\nIdea for the club poster'), { timeout: 2000 });
+  });
+
+  it('keeps the draft when the note is closed right after typing', () => {
+    const store = mount();
+    nav('Notes');
+    fireEvent.click(screen.getByRole('button', { name: 'New note' }));
+    type(screen.getByLabelText('Note'), 'Idea for the club poster');
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Close' }));
+    expect(store.get().data.noteDraft).toBe('\nIdea for the club poster');
+  });
+
+  it('keeps a note that is too long open instead of closing it unsaved', () => {
+    const store = mount();
+    nav('Notes');
+    fireEvent.click(screen.getByRole('button', { name: 'New note' }));
+    type(screen.getByLabelText('Title'), 'Long');
+    type(screen.getByLabelText('Note'), 'x'.repeat(10_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+    expect(store.get().data.notes).toEqual([]);
+    expect((within(dialog()).getByLabelText('Note') as HTMLTextAreaElement).value).toHaveLength(10_000);
   });
 
   it('writes a note’s title apart from its body, and shows them the same way after saving', () => {

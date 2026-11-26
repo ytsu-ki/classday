@@ -63,7 +63,8 @@ export type SaveStatus = 'saved' | 'saving' | 'failed';
  * and reports the failure so the interface can offer a backup.
  */
 export class Saver {
-  private pending: string | null = null;
+  /** The newest data not yet written. Each change makes a new object, so it is never altered while it waits. */
+  private pending: PlannerData | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private writing: Promise<void> | null = null;
   private attempt = 0;
@@ -78,7 +79,7 @@ export class Saver {
   ) {}
 
   schedule(data: PlannerData) {
-    this.pending = JSON.stringify(data);
+    this.pending = data;
     this.setStatus('saving');
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.flush(), this.delay);
@@ -86,20 +87,28 @@ export class Saver {
 
   async flush(): Promise<void> {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
-    if (this.writing) await this.writing;
-    const json = this.pending;
-    if (json === null) return;
-    this.pending = null;
-    this.writing = this.write(json);
-    try {
-      await this.writing;
-    } finally {
-      this.writing = null;
+    while (this.writing || this.pending !== null) {
+      if (this.writing) {
+        await this.writing;
+        continue;
+      }
+      const data = this.pending!;
+      this.pending = null;
+      let ok = false;
+      this.writing = this.write(data).then(result => { ok = result; });
+      try {
+        await this.writing;
+      } finally {
+        this.writing = null;
+      }
+      if (!ok) break;
     }
   }
 
-  private async write(json: string) {
+  private async write(data: PlannerData): Promise<boolean> {
     try {
+      // Put into text here, once per write, not on every change while typing.
+      const json = JSON.stringify(data);
       await this.backend.write(json);
       this.attempt = 0;
       const day = this.today();
@@ -108,13 +117,15 @@ export class Saver {
         await this.backend.snapshot(json, day).catch(() => { this.snapshotDay = ''; });
       }
       if (this.pending === null) this.setStatus('saved');
+      return true;
     } catch {
       // Keep the newest data queued and retry with growing pauses.
-      if (this.pending === null) this.pending = json;
+      if (this.pending === null) this.pending = data;
       this.attempt++;
       this.setStatus('failed');
       const wait = [2000, 5000, 15_000, 30_000][Math.min(this.attempt - 1, 3)];
       if (!this.timer) this.timer = setTimeout(() => void this.flush(), wait);
+      return false;
     }
   }
 

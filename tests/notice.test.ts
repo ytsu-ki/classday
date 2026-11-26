@@ -62,4 +62,12 @@ describe('how long an event lasts', () => {
     expect(end('14:00', {}, [])).toBe(at('15:30'));
     expect(end('23:00')).toBe(at('23:59'));
   });
+
+  it('never runs a double period across lunch or dinner', () => {
+    // Period 4 ends the morning; period 5 starts at 13:40.
+    expect(end('11:05')).toBe(at('12:45'));
+    expect(end('16:35')).toBe(at('18:15'));
+    // The longer mid-morning break still joins two periods.
+    expect(end('08:55')).toBe(at('10:55'));
+  });
 });

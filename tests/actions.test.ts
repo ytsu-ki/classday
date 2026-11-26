@@ -48,18 +48,24 @@ describe('events', () => {
   });
 });
 
-describe('notes', () => {
-  it('saves, edits and turns a note into a to-do once', () => {
+describe('notes and notebooks', () => {
+  it('saves, edits, moves notes between notebooks and clears the draft', () => {
     const d = data();
     d.noteDraft = 'draft';
-    const note = act.saveNote(d, null, 'Ask about research', 'https://example.edu/r');
+    const bio = act.saveNotebook(d, null, '  Biology  ', 2);
+    const chem = act.saveNotebook(d, null, 'Chemistry', 4);
+    const note = act.saveNote(d, null, 'Lab prep', 'Bring goggles', bio.id);
     expect(d.noteDraft).toBe('');
-    const item = act.noteToTodo(d, note.id);
-    expect(item).toMatchObject({ title: 'Ask about research', estimate: null, important: false, urgent: false });
-    expect(item.details).toContain('https://example.edu/r');
-    expect(act.noteToTodo(d, note.id).id).toBe(item.id);
-    expect(d.items).toHaveLength(1);
+    expect(note.notebookId).toBe(bio.id);
+    expect(d.notebooks).toHaveLength(2);
+
+    act.moveNote(d, note.id, chem.id);
+    expect(d.notes[0].notebookId).toBe(chem.id);
+    act.moveNote(d, note.id, null);
+    expect(d.notes[0].notebookId).toBeUndefined();
     expect(() => act.saveNote(d, null, '   ', '\n ')).toThrow(act.ActionError);
+    expect(() => act.saveNotebook(d, null, '   ', 0)).toThrow(act.ActionError);
+    expect(() => act.moveNote(d, note.id, 'missing')).toThrow(act.ActionError);
   });
 
   it('keeps the title apart from the body, and a note without a title has none', () => {
@@ -70,16 +76,17 @@ describe('notes', () => {
     const untitled = act.saveNote(d, null, '', 'Buy chalk\nand tape');
     expect(untitled.text).toBe('\nBuy chalk\nand tape');
     expect(noteParts(untitled.text)).toEqual({ title: '', body: 'Buy chalk\nand tape' });
-    expect(act.noteToTodo(d, untitled.id)).toMatchObject({ title: 'Buy chalk', details: 'Buy chalk\nand tape' });
     // Notes from before titles had their own field read the same way: the first line is the title.
     expect(noteParts('Ask about research\nhttps://example.edu/r')).toEqual({ title: 'Ask about research', body: 'https://example.edu/r' });
   });
 
-  it('deleting a to-do unlinks its note instead of deleting it', () => {
+  it('deleting a notebook preserves its notes safely in Quick notes (uncategorized)', () => {
     const d = data();
-    const note = act.saveNote(d, null, 'Idea', '');
-    const item = act.noteToTodo(d, note.id);
-    act.deleteItem(d, item.id);
-    expect(d.notes[0].itemId).toBeUndefined();
+    const book = act.saveNotebook(d, null, 'Algorithms', 3);
+    act.saveNote(d, null, 'Dynamic programming', 'Memoize subproblems', book.id);
+    act.deleteNotebook(d, book.id);
+    expect(d.notebooks).toEqual([]);
+    expect(d.notes).toHaveLength(1);
+    expect(d.notes[0].notebookId).toBeUndefined();
   });
 });

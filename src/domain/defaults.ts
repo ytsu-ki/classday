@@ -15,6 +15,8 @@ export const LIMITS = {
   items: 1000,
   events: 2000,
   notes: 2000,
+  notebooks: 100,
+  notebookName: 60,
   title: 200,
   text: 10_000,
 } as const;
@@ -36,6 +38,7 @@ export function initialData(): PlannerData {
     items: [],
     events: [],
     notes: [],
+    notebooks: [],
     noteDraft: '',
     settings: defaultSettings(),
     appearance: { accent: DEFAULT_ACCENT, theme: 'system', language: 'system' },

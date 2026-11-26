@@ -2,7 +2,7 @@ import { ACCENTS, DEFAULT_ACCENT, defaultReminders, defaultSettings, LANGUAGES, 
 import { MAX_PERIODS } from './periods';
 import { ProblemError, type Problem } from './problems';
 import { isClock, isDateKey, toMinutes } from './time';
-import type { ClassPeriod, FixedEvent, ImportHistory, Item, Note, PlannerData, SemesterPreferences, Settings } from './types';
+import type { ClassPeriod, FixedEvent, ImportHistory, Item, Note, Notebook, PlannerData, SemesterPreferences, Settings } from './types';
 
 /**
  * Rebuilds planner data from untrusted JSON (storage and backups).
@@ -112,8 +112,16 @@ function normalizeNote(raw: unknown): Note | null {
   const body = text(raw.text, LIMITS.text);
   if (!body?.trim() || !isIso(raw.createdAt) || !isIso(raw.updatedAt)) return null;
   const note: Note = { id: raw.id, text: body, createdAt: raw.createdAt, updatedAt: raw.updatedAt };
-  if (isSafeId(raw.itemId)) note.itemId = raw.itemId;
+  if (isSafeId(raw.notebookId)) note.notebookId = raw.notebookId;
   return note;
+}
+
+function normalizeNotebook(raw: unknown): Notebook | null {
+  if (!isObj(raw) || !isSafeId(raw.id)) return null;
+  const s = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (!s || s.length > LIMITS.notebookName || !isIso(raw.createdAt) || !isIso(raw.updatedAt)) return null;
+  const color = isInt(raw.color, 0, 9) ? raw.color : 0;
+  return { id: raw.id, name: s, color, createdAt: raw.createdAt, updatedAt: raw.updatedAt };
 }
 
 export function settingsProblem(s: Settings): Problem | null {
@@ -190,10 +198,11 @@ export function normalizeData(raw: unknown): NormalizeReport {
   if (!isObj(raw) || raw.schema !== 1) throw new DataError({ code: 'data-format' });
   const counter = { dropped: 0 };
   const items = unique(list(raw.items, LIMITS.items, normalizeItem, counter), counter);
-  const ids = new Set(items.map(i => i.id));
   const events = unique(list(raw.events, LIMITS.events, normalizeEvent, counter), counter);
+  const notebooks = unique(list(raw.notebooks, LIMITS.notebooks, normalizeNotebook, counter), counter);
+  const bookIds = new Set(notebooks.map(b => b.id));
   const notes = unique(list(raw.notes, LIMITS.notes, normalizeNote, counter), counter);
-  for (const note of notes) if (note.itemId && !ids.has(note.itemId)) delete note.itemId;
+  for (const note of notes) if (note.notebookId && !bookIds.has(note.notebookId)) delete note.notebookId;
   const timetableRaw = isObj(raw.timetable) ? raw.timetable : {};
   const exclusions = Array.isArray(timetableRaw.exclusions)
     ? timetableRaw.exclusions.filter((v): v is string => typeof v === 'string' && v.length <= 750).slice(0, 2000) : [];
@@ -224,7 +233,7 @@ export function normalizeData(raw: unknown): NormalizeReport {
   };
   return {
     data: {
-      schema: 1, items, events, notes,
+      schema: 1, items, events, notes, notebooks,
       noteDraft: text(raw.noteDraft, LIMITS.text) ?? '',
       settings: normalizeSettings(raw.settings),
       appearance, reminders, timetable, meta,

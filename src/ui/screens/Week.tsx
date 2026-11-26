@@ -1,23 +1,22 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useAppState, useUi } from '../../app/context';
 import { allDayFor, dayWindow, fixedFor } from '../../domain/schedule';
 import { addDays, dateOf, weekOf } from '../../domain/time';
 import type { DateKey } from '../../domain/types';
 import { t } from '../../i18n';
 import { Button, Empty, IconButton } from '../components/controls';
+import { createDraftSlot, DraftBlock, type DraftSlot } from '../draftSlot';
 import { joinFacts, span, timeParts, weekdayAbbr, weekRange } from '../format';
-import { useSwipe } from '../useSwipe';
-import { courseColors, inLanes, passingBreaks, periodRows, semesterWeek, weekAxis, type Axis } from '../weekGrid';
+import { usePager } from '../useSwipe';
+import { courseColors, passingBreaks, periodRows, semesterWeek, weekAxis, weekClusters, type Axis } from '../weekGrid';
 
-/** The week as a timetable. The + adds an event; a sideways swipe moves to the next or previous week. */
+/** The week as a timetable. Tapping empty space places a draggable dashed draft slot. */
 export function WeekScreen() {
   const { data, today } = useAppState();
   const ui = useUi();
   const [monday, setMonday] = useState(weekOf(today));
-  const [slide, setSlide] = useState<'next' | 'previous' | ''>('');
-  const move = (by: 1 | -1) => { setSlide(by > 0 ? 'next' : 'previous'); setMonday(addDays(monday, 7 * by)); };
-  const swipe = useSwipe(move);
+  const { slide, setSlide, move, swipe } = usePager(useCallback((by: 1 | -1) => setMonday(m => addDays(m, 7 * by)), []), Boolean(ui.sheet));
   const thisWeek = monday === weekOf(today);
   const future = monday > weekOf(today);
   const week = semesterWeek(data, monday);
@@ -55,27 +54,67 @@ const px = (n: number) => `${n}px`;
 const digits = (minute: number) => timeParts(minute).digits;
 
 /**
- * A column per day, the periods down the side, and each event in its own soft color. All-day
- * events sit under the day row. Only the cards take a tap; the day row and empty space do nothing.
+ * A column per day, the periods down the side, and each event in its own soft color. Overlapping
+ * events collapse into one full-width card with a "+N" badge; tapping empty space places a dashed
+ * draft block whose edges drag to adjust duration before tapping opens EventSheet.
  */
 function WeekGrid({ monday }: { monday: DateKey }) {
   const { data, today, minute } = useAppState();
   const ui = useUi();
-  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
-  const periods = periodRows(data);
-  const columns = days.map(day => ({ day, events: fixedFor(data, day).filter(f => f.kind === 'event'), allDay: allDayFor(data, day) }));
-  const cards = columns.flatMap(c => c.events);
-  const spans = [...periods, ...cards];
-  const window = dayWindow(data.settings);
-  const range = {
-    start: Math.floor(Math.min(window.start, ...spans.map(s => s.start)) / 30) * 30,
-    end: Math.ceil(Math.max(window.end, ...spans.map(s => s.end)) / 30) * 30,
-  };
-  const axis = weekAxis(range, spans, passingBreaks(periods, cards));
-  const colors = courseColors(data.events);
+  const [draft, setDraft] = useState<DraftSlot | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setDraft(null); }, [monday]);
+
+  useEffect(() => {
+    if (!draft) return;
+    const unregister = ui.registerBack(() => {
+      if (ui.sheet) return false;
+      setDraft(null);
+      return true;
+    });
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-draft-slot]') || target?.closest('.wk-col')) return;
+      setDraft(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !ui.sheet) setDraft(null); };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      unregister();
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [draft, ui]);
+
+  // Worked out once per week and per change to the data, not on every tick of the clock or toast.
+  const { periods, columns, range, axis, colors } = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+    const periods = periodRows(data);
+    const columns = days.map(day => ({
+      day, allDay: allDayFor(data, day),
+      clusters: weekClusters(fixedFor(data, day).filter(f => f.kind === 'event').map(f => ({ value: f, start: f.start, end: f.end }))),
+    }));
+    const cards = columns.flatMap(c => c.clusters.flatMap(x => x.entries));
+    const spans = [...periods, ...cards];
+    const window = dayWindow(data.settings);
+    const range = {
+      start: Math.floor(Math.min(window.start, ...spans.map(s => s.start)) / 30) * 30,
+      end: Math.ceil(Math.max(window.end, ...spans.map(s => s.end)) / 30) * 30,
+    };
+    return { periods, columns, range, axis: weekAxis(range, spans, passingBreaks(periods, cards)), colors: courseColors(data.events) };
+  }, [data, monday]);
   const place = (start: number, end: number): JSX.CSSProperties => ({ top: px(axis.y(start)), height: px(axis.y(end) - axis.y(start)) });
   const first = dateOf(monday);
   const anyAllDay = columns.some(c => c.allDay.length);
+  const onEmptyClick = (e: MouseEvent, day: DateKey) => {
+    const col = e.currentTarget as HTMLElement | null;
+    if (!col?.isConnected || (e.target as HTMLElement).closest('button, [data-draft-slot]')) return;
+    const rect = col.getBoundingClientRect();
+    const relY = e.clientY > 0 ? Math.max(0, e.clientY - rect.top) : 0;
+    setDraft(createDraftSlot(day, axis.minuteAt(relY), periods, range));
+  };
 
   return (
     <div class="wk" role="group" aria-label={t.week.gridLabel(weekRange(monday))}>
@@ -91,13 +130,13 @@ function WeekGrid({ monday }: { monday: DateKey }) {
         {anyAllDay && columns.map(({ day, allDay }) => (
           <div class="wk-all-day">
             {allDay.map(e => (
-              <button type="button" class={`wk-all-day-chip course-${colors.get(e.title) ?? 0}`} aria-label={joinFacts([e.title, weekdayAbbr(day), t.event.allDay])}
-                onClick={() => ui.open({ type: 'fixed', eventId: e.id, day })}>{e.title}</button>
+              <button type="button" class={`wk-all-day-chip course-${colors.get(e.title) ?? 0}`} title={e.title} aria-label={joinFacts([e.title, weekdayAbbr(day), t.event.allDay])}
+                onClick={() => { setDraft(null); ui.open({ type: 'fixed', eventId: e.id, day }); }}>{e.title}</button>
             ))}
           </div>
         ))}
       </div>
-      <div class="wk-body" style={{ height: px(axis.height) }}>
+      <div ref={bodyRef} class="wk-body" style={{ height: px(axis.height) }}>
         <div class="wk-times" aria-hidden="true">
           {periods.length
             ? periods.map(p => (
@@ -108,27 +147,57 @@ function WeekGrid({ monday }: { monday: DateKey }) {
             : hours(range.start, range.end, axis).map(h => <div class="wk-hour" style={{ top: px(axis.y(h)) }}>{digits(h)}</div>)}
         </div>
         {periods.map(p => <div class="wk-line" style={{ top: px(axis.y(p.end)) }} aria-hidden="true" />)}
-        {columns.map(({ day, events }) => {
+        {columns.map(({ day, clusters }) => {
           const over = (end: number) => day < today || (day === today && end <= minute);
-          const laid = inLanes(events.map(f => ({ value: f, start: f.start, end: f.end })));
           return (
-            <div class="wk-col">
-              {laid.map(({ value: f, start, end, lane, lanes }) => {
-                const style = { ...place(start, end), left: `calc(${(lane / lanes) * 100}% + 1px)`, width: `calc(${100 / lanes}% - 2px)` };
+            <div class="wk-col" data-day={day} onClick={e => onEmptyClick(e, day)}>
+              {clusters.map(cluster => {
+                const { primary, entries, start, end } = cluster;
+                const f = primary.value;
+                const extra = entries.length - 1;
+                const style = { ...place(start, end), left: '1px', width: 'calc(100% - 2px)' };
                 // Cards that meet across a closed passing period share a square edge.
-                const meets = (y: number, edge: 'start' | 'end') => laid.some(o => o.lane === lane && o.lanes === lanes && o.value !== f && axis.y(o[edge]) === y);
+                const meets = (y: number, edge: 'start' | 'end') => clusters.some(o => o !== cluster && axis.y(o[edge]) === y);
                 const joins = `${meets(axis.y(start), 'end') ? ' joins-above' : ''}${meets(axis.y(end), 'start') ? ' joins-below' : ''}`;
-                // A one-period card keeps its room for the title.
-                const roomy = axis.y(end) - axis.y(start) >= 64;
+                const roomy = axis.y(end) - axis.y(start) >= 64 && extra === 0;
+                const title = extra > 0
+                  ? entries.map(x => joinFacts([x.value.title, span(x.start, x.end), x.value.event?.location])).join('\n')
+                  : joinFacts([f.title, span(start, end), f.event?.location]);
+                const aria = extra > 0
+                  ? t.week.overlapAria(f.title, extra, `${weekdayAbbr(day)} ${span(start, end)}`)
+                  : joinFacts([f.title, `${weekdayAbbr(day)} ${span(start, end)}`, f.event?.location]);
                 return (
-                  <button type="button" class={`wk-card course-${colors.get(f.title) ?? 0}${joins} ${over(end) ? 'is-over' : ''}`} style={style}
-                    aria-label={joinFacts([f.title, `${weekdayAbbr(day)} ${span(start, end)}`, f.event?.location])}
-                    onClick={() => ui.open({ type: 'fixed', eventId: f.id, day })}>
+                  <button type="button" title={title}
+                    class={`wk-card course-${colors.get(f.title) ?? 0}${joins}${extra > 0 ? ' is-stacked' : ''}${over(end) ? ' is-over' : ''}`} style={style}
+                    aria-label={aria}
+                    onClick={() => {
+                      setDraft(null);
+                      if (extra > 0) ui.open({ type: 'overlap', day, eventIds: entries.map(x => x.value.id) });
+                      else ui.open({ type: 'fixed', eventId: f.id, day });
+                    }}>
                     <strong>{f.title}</strong>
-                    {roomy && f.event?.location && <span class="wk-where">{f.event.location}</span>}
+                    {extra > 0
+                      ? <span class="wk-more" aria-hidden="true">+{extra}</span>
+                      : roomy && f.event?.location && <span class="wk-where">{f.event.location}</span>}
                   </button>
                 );
               })}
+              {draft && draft.day === day && (
+                <DraftBlock
+                  slot={draft}
+                  axis={axis}
+                  range={range}
+                  periods={periods}
+                  compact
+                  containerRef={bodyRef}
+                  onChange={setDraft}
+                  onEdit={() => {
+                    const picked = draft;
+                    setDraft(null);
+                    ui.open({ type: 'event', id: null, day: picked.day, start: picked.start, end: picked.end });
+                  }}
+                />
+              )}
             </div>
           );
         })}

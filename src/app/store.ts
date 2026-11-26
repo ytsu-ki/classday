@@ -1,5 +1,5 @@
-import { ActionError, type Moment } from '../domain/actions';
-import { DataError } from '../domain/schema';
+import type { Moment } from '../domain/actions';
+import { ProblemError } from '../domain/problems';
 import { problemText, t } from '../i18n';
 import { dayKey, minuteOfDay, nowIso } from '../domain/time';
 import type { PlannerData } from '../domain/types';
@@ -85,7 +85,8 @@ export class Store {
     try {
       result = action(draft, now);
     } catch (error) {
-      if (error instanceof ActionError || error instanceof DataError) {
+      // Actions, stored data and timetable imports all refuse with a Problem.
+      if (error instanceof ProblemError) {
         this.showToast(problemText(error.problem), 'error', false);
         return undefined;
       }

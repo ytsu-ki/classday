@@ -56,8 +56,27 @@ export function pickFile(accept: string): Promise<File | null> {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = accept;
-    input.addEventListener('change', () => resolve(input.files?.[0] ?? null), { once: true });
-    input.addEventListener('cancel', () => resolve(null), { once: true });
+    let settled = false;
+    let focusTimer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (file: File | null) => {
+      if (settled) return;
+      settled = true;
+      if (focusTimer) clearTimeout(focusTimer);
+      input.removeEventListener('change', onChange);
+      input.removeEventListener('cancel', onCancel);
+      window.removeEventListener('focus', onFocus);
+      resolve(file);
+    };
+    const onChange = () => finish(input.files?.[0] ?? null);
+    const onCancel = () => finish(null);
+    // WebView 105–112 does not fire input 'cancel'; resolve after window focus returns without a file.
+    const onFocus = () => {
+      if (focusTimer) clearTimeout(focusTimer);
+      focusTimer = setTimeout(() => finish(input.files?.[0] ?? null), 500);
+    };
+    input.addEventListener('change', onChange, { once: true });
+    input.addEventListener('cancel', onCancel, { once: true });
+    window.addEventListener('focus', onFocus);
     input.click();
   });
 }

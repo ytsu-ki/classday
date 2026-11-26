@@ -1,21 +1,21 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useId, useMemo, useState } from 'preact/hooks';
 import { useAppState, useStore, useUi } from '../../app/context';
 import * as act from '../../domain/actions';
 import { LIMITS } from '../../domain/defaults';
 import { eventEnd, parseNotice } from '../../domain/notice';
 import { problemOf } from '../../domain/problems';
-import { daysOf } from '../../domain/schedule';
+import { daysOf, occurs } from '../../domain/schedule';
 import { REMINDER_LEADS } from '../../domain/schema';
 import { addDays, dateOf, isClock, roundUp, toClock, toMinutes, uid } from '../../domain/time';
 import type { DateKey, EventCategory, FixedEvent } from '../../domain/types';
 import { problemText, t } from '../../i18n';
 import { formatRanges, parseRanges } from '../../timetable/weeks';
-import { Button, Chip, Disclosure, Field, Segmented, Switch } from '../components/controls';
+import { Button, Disclosure, Field, Segmented } from '../components/controls';
 import { useDatePage } from '../components/DatePage';
 import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
 import { TimeField } from '../components/TimeField';
-import { inlineDay, joinFacts, longDate, relativeDay, span, weekdayAbbr } from '../format';
+import { clockTime, inlineDay, joinFacts, longDate, relativeDay, span, weekdayAbbr } from '../format';
 import { periodRows } from '../weekGrid';
 
 /** Monday first, as timetables are read. */
@@ -40,11 +40,10 @@ export function repeatText(e: FixedEvent): string {
 const dateText = (day: DateKey) => `${longDate(day)} ${weekdayAbbr(day)}`;
 
 /**
- * Add or change an event. Every event is one of three kinds: once, short-term (repeats until an
- * end date) or long-term (repeats with no planned end). Pasting a whole notice or message into
- * the name reads the date, time and place out of it (see domain/notice.ts).
+ * Compact add/edit form for an event. Pasting a whole notice into the name auto-fills date, time
+ * and place; date/time/repeat controls sit together inside one schedule card.
  */
-export function EventSheet({ id, day, start: startAt }: { id: string | null; day?: DateKey; start?: number }) {
+export function EventSheet({ id, day, start: startAt, end: endAt }: { id: string | null; day?: DateKey; start?: number; end?: number }) {
   const { data, today, minute } = useAppState();
   const store = useStore();
   const ui = useUi();
@@ -54,16 +53,22 @@ export function EventSheet({ id, day, start: startAt }: { id: string | null; day
   const [e, setE] = useState<FixedEvent>(() => {
     if (existing) return { ...existing };
     const first = Math.min(startAt ?? (base === today ? roundUp(minute + 1, 30) : 9 * 60), 23 * 60);
+    const chosenEnd = endAt !== undefined && endAt > first ? Math.min(23 * 60 + 59, endAt) : eventEnd(first, {}, periods);
     return {
-      id: uid(), title: '', category: 'once', start: toClock(first), end: toClock(eventEnd(first, {}, periods)),
+      id: uid(), title: '', category: 'once', start: toClock(first), end: toClock(chosenEnd),
       repeat: 'once', date: base, weekday: dateOf(base).getDay(), from: base, until: '', parity: 'all',
     };
   });
-  const [endChosen, setEndChosen] = useState(Boolean(existing));
+  const [endChosen, setEndChosen] = useState(Boolean(existing || endAt !== undefined));
+  const [activeTime, setActiveTime] = useState<'start' | 'end' | null>(null);
   const [weeksText, setWeeksText] = useState(existing?.weeks ? formatRanges(existing.weeks, t.format.parityRange) : '');
   const [found, setFound] = useState('');
   const [error, setError] = useState('');
   const dates = useDatePage(today);
+  const titleId = useId();
+  const locId = useId();
+  const remId = useId();
+  const allDayId = useId();
   const set = (patch: Partial<FixedEvent>) => { setError(''); setE(current => ({ ...current, ...patch })); };
   const days = daysOf(e);
 
@@ -105,8 +110,7 @@ export function EventSheet({ id, day, start: startAt }: { id: string | null; day
     if (readNotice(event.clipboardData?.getData('text') ?? '', 1)) event.preventDefault();
   };
   // Android keyboards put copied text in through their clipboard suggestion as if it were typed, with
-  // no paste event, so a large insertion in one go is read as well. The field has no maxLength,
-  // which would cut a long notice before it could be read; the name is clamped here instead.
+  // no paste event, so a large insertion in one go is read as well.
   const onName = (event: InputEvent) => {
     const value = (event.target as HTMLInputElement).value;
     const pasted = /^insertFrom(Paste|Drop)/.test(event.inputType ?? '');
@@ -138,96 +142,148 @@ export function EventSheet({ id, day, start: startAt }: { id: string | null; day
       } else delete next.weeks;
       if (next.parity !== 'all' && dateOf(next.from).getDay() !== 1) return setError(t.event.parityMonday);
     }
-    store.act(d => act.saveEvent(d, next), { message: existing ? t.event.saved : t.event.added(e.category === 'once' ? dateText(e.date) : repeatText(next)) });
-    ui.close();
+    const done = store.act(d => { act.saveEvent(d, next); return true; }, { message: existing ? t.event.saved : t.event.added(e.category === 'once' ? dateText(e.date) : repeatText(next)) });
+    if (done) ui.close();
   };
 
   const pick = (title: string, value: DateKey, done: (day: DateKey) => void, min?: DateKey) => dates.open({ title, date: value, min, done });
-  const datePill = (label: string, value: DateKey, onPick: () => void) => (
-    <div class="field">
-      <span class="field-label">{label}</span>
-      <button type="button" class="date-pill" onClick={onPick} aria-label={`${label}: ${dateText(value)}`}>
-        <Icon name="calendar" size={18} /><span>{dateText(value)}</span>
-      </button>
-    </div>
+  const dateTrigger = (label: string, value: DateKey, onPick: () => void) => (
+    <button type="button" class="date-pill-inline" onClick={onPick} aria-label={`${label}: ${dateText(value)}`}>
+      <Icon name="calendar" size={16} />
+      <span>{dateText(value)}</span>
+    </button>
   );
   const leads = e.allDay ? [0, 1440] : REMINDER_LEADS;
+  const toggleAllDay = () => {
+    const v = !e.allDay;
+    if (v) setActiveTime(null);
+    set({ allDay: v || undefined, ...(v && e.remind !== undefined && e.remind !== 1440 ? { remind: 0 } : {}) });
+  };
 
   const page = dates.page;
   return (
-    <Sheet title={page?.title ?? (existing ? t.event.editTitle : t.event.addTitle)} onClose={page?.onClose ?? ui.close}
-      footer={page?.footer ?? <Button variant="primary" type="submit" form="event-form" class="grow">{existing ? t.common.save : t.common.add}</Button>}>
+    <Sheet
+      title={page?.title ?? (existing ? t.event.editTitle : t.event.addTitle)}
+      subtitle={!page && existing?.sourceKey ? t.event.imported : undefined}
+      onClose={page?.onClose ?? ui.close}
+      footer={page?.footer ?? (
+        <>
+          {existing && (
+            <Button variant="danger" icon="trash" onClick={() => ui.push({
+              type: 'confirm', title: t.event.removeTitle, danger: true, confirm: t.common.remove,
+              message: existing.repeat === 'weekly' ? t.event.removeRepeating(existing.title) : t.event.removeOnce(existing.title),
+              onConfirm: () => store.act(d => act.deleteEvent(d, existing.id), { message: t.event.removed }),
+            })}>{t.common.remove}</Button>
+          )}
+          <Button variant="primary" type="submit" form="event-form" class="grow">{existing ? t.common.save : t.common.add}</Button>
+        </>
+      )}>
       {page?.body ?? (
-        <form id="event-form" class="form-stack" onSubmit={save} noValidate>
-          <Field label={t.common.name} hint={found || (existing ? undefined : t.event.pasteHint)}>
-            {fid => <input id={fid} data-autofocus={!existing || undefined} type="text" placeholder={t.event.namePlaceholder}
-              value={e.title} onPaste={onPaste} onInput={x => onName(x as InputEvent)} />}
-          </Field>
-          <Field label={t.event.where}>
-            {fid => <input id={fid} type="text" maxLength={500} placeholder={t.common.optional} value={e.location ?? ''} onInput={x => set({ location: (x.target as HTMLInputElement).value })} />}
-          </Field>
+        <form id="event-form" class="form-stack event-form-compact" onSubmit={save} noValidate>
+          <div class="field">
+            <label class="sr-only" for={titleId}>{t.common.name}</label>
+            <input id={titleId} class="event-title-input" data-autofocus={!existing || undefined} type="text"
+              placeholder={t.event.namePlaceholder} value={e.title} onPaste={onPaste} onInput={x => onName(x as InputEvent)} />
+            {found && <p class="notice-parsed">{found}</p>}
+          </div>
 
-          <Segmented<EventCategory> label={t.event.category} value={e.category} onChange={setCategory} options={[
+          <Segmented<EventCategory> size="sm" label={t.event.category} value={e.category} onChange={setCategory} options={[
             { value: 'once', label: t.event.categories.once }, { value: 'short', label: t.event.categories.short }, { value: 'long', label: t.event.categories.long },
           ]} />
-          <p class="field-hint">{t.event.categoryHints[e.category]}</p>
 
-          {e.category === 'once'
-            ? datePill(t.event.date, e.date, () => pick(t.event.date, e.date, date => set({ date, from: date, weekday: dateOf(date).getDay() })))
-            : (
-              <>
-                <div class="form-grid">
-                  {datePill(t.event.firstDay, e.from, () => pick(t.event.firstDay, e.from, from => set({ from, date: from })))}
-                  {e.category === 'short' && datePill(t.event.lastDay, e.until || e.from, () => pick(t.event.lastDay, e.until || e.from, until => set({ until }), e.from))}
-                </div>
-                <fieldset class="group">
-                  <legend>{t.event.repeatsOn}</legend>
-                  <div class="chips">
-                    <Chip selected={days.length === 7} onClick={() => set(days.length === 7 ? { days: undefined } : { days: ALL_DAYS })}>{t.event.everyDay}</Chip>
-                    {WEEK_ORDER.map(n => <Chip selected={days.length < 7 && days.includes(n)} onClick={() => toggleDay(n)}>{t.common.weekdaysShort[n]}</Chip>)}
-                  </div>
-                </fieldset>
-              </>
+          <div class="event-card">
+            <div class="event-row-split">
+              <div class="date-inline-group">
+                {e.category === 'once'
+                  ? dateTrigger(t.event.date, e.date, () => pick(t.event.date, e.date, date => set({ date, from: date, weekday: dateOf(date).getDay() })))
+                  : (
+                    <>
+                      {dateTrigger(t.event.firstDay, e.from, () => pick(t.event.firstDay, e.from, from => set({
+                        from, date: from, ...(e.category === 'short' && e.until && from > e.until ? { until: from } : {}),
+                      })))}
+                      {e.category === 'short' && (
+                        <>
+                          <span class="date-arrow" aria-hidden="true">-</span>
+                          {dateTrigger(t.event.lastDay, e.until || e.from, () => pick(t.event.lastDay, e.until || e.from, until => set({ until }), e.from))}
+                        </>
+                      )}
+                    </>
+                  )}
+              </div>
+              <div class="allday-toggle">
+                <label for={allDayId}>{t.event.allDay}</label>
+                <button id={allDayId} type="button" role="switch" aria-checked={Boolean(e.allDay)} class="switch switch-sm" onClick={toggleAllDay}>
+                  <span class="switch-knob" />
+                </button>
+              </div>
+            </div>
+
+            {!e.allDay && (
+              <div class="time-pair">
+                <TimeField label={t.event.starts} value={e.start} onChange={setStart}
+                  open={activeTime === 'start'} onOpenChange={o => setActiveTime(o ? 'start' : null)} />
+                <span class="time-pair-sep" aria-hidden="true">-</span>
+                <TimeField label={t.event.ends} value={e.end} onChange={v => { setEndChosen(true); set({ end: v }); }}
+                  open={activeTime === 'end'} onOpenChange={o => setActiveTime(o ? 'end' : null)} />
+              </div>
             )}
 
-          <Switch checked={Boolean(e.allDay)} onChange={v => set({ allDay: v || undefined, ...(v && e.remind !== undefined && e.remind !== 1440 ? { remind: 0 } : {}) })} label={t.event.allDay} />
-          {!e.allDay && (
-            <div class="form-grid">
-              <Field label={t.event.starts}>{fid => <TimeField id={fid} label={t.event.starts} value={e.start} onChange={setStart} />}</Field>
-              <Field label={t.event.ends}>{fid => <TimeField id={fid} label={t.event.ends} value={e.end} onChange={v => { setEndChosen(true); set({ end: v }); }} />}</Field>
-            </div>
-          )}
+            {e.category !== 'once' && (
+              <fieldset class="weekday-strip">
+                <div class="weekday-head">
+                  <legend>{t.event.repeatsOn}</legend>
+                  <button type="button" class={`weekday-all ${days.length === 7 ? 'is-selected' : ''}`}
+                    aria-pressed={days.length === 7}
+                    onClick={() => set(days.length === 7 ? { days: undefined } : { days: ALL_DAYS })}>
+                    {t.event.everyDay}
+                  </button>
+                </div>
+                <div class="weekday-cells">
+                  {WEEK_ORDER.map(n => (
+                    <button key={n} type="button" class={`weekday-cell ${days.length < 7 && days.includes(n) ? 'is-selected' : ''}`}
+                      aria-label={t.common.weekdaysShort[n]}
+                      aria-pressed={days.length < 7 && days.includes(n)}
+                      onClick={() => toggleDay(n)}>
+                      {t.calendar.weekdayLetters[n]}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+          </div>
 
-          <Field label={t.event.remind}>
-            {fid => (
-              <select id={fid} value={e.remind ?? 'none'} onChange={x => { const v = (x.target as HTMLSelectElement).value; set({ remind: v === 'none' ? undefined : Number(v) }); }}>
+          <div class="event-card">
+            <label class="event-inline-row" for={locId}>
+              <Icon name="pin" size={18} />
+              <span class="sr-only">{t.event.where}</span>
+              <input id={locId} type="text" maxLength={500} placeholder={t.event.wherePlaceholder}
+                value={e.location ?? ''} onInput={x => set({ location: (x.target as HTMLInputElement).value })} />
+            </label>
+            <div class="event-inline-row">
+              <Icon name="bell" size={18} />
+              <label for={remId}>{t.event.remind}</label>
+              <select id={remId} value={e.remind ?? 'none'} onChange={x => { const v = (x.target as HTMLSelectElement).value; set({ remind: v === 'none' ? undefined : Number(v) }); }}>
                 <option value="none">{t.event.noReminder}</option>
                 {leads.map(m => <option value={m}>{e.allDay ? t.event.allDayReminders[m as 0 | 1440] : t.event.reminders(m)}</option>)}
               </select>
-            )}
-          </Field>
+            </div>
+          </div>
 
           {e.category !== 'once' && (
             <Disclosure label={t.event.weeksAndDates} open={Boolean(existing?.weeks || (existing && existing.parity !== 'all'))}>
               <div class="form-stack">
                 <Segmented<'all' | 'odd' | 'even'> size="sm" label={t.event.whichWeeks} value={e.parity} onChange={v => set({ parity: v })}
                   options={[{ value: 'all', label: t.event.allWeeks }, { value: 'odd', label: t.event.odd }, { value: 'even', label: t.event.even }]} />
-                <Field label={t.event.onlyWeeks} hint={t.event.onlyWeeksHint}>
-                  {fid => <input id={fid} type="text" inputMode="text" placeholder={t.event.allWeeks} value={weeksText} onInput={x => { setWeeksText((x.target as HTMLInputElement).value); setError(''); }} />}
-                </Field>
-                <Field label={t.event.teacher}>{fid => <input id={fid} type="text" maxLength={500} placeholder={t.common.optional} value={e.teacher ?? ''} onInput={x => set({ teacher: (x.target as HTMLInputElement).value })} />}</Field>
+                <div class="form-grid">
+                  <Field label={t.event.onlyWeeks}>
+                    {fid => <input id={fid} type="text" inputMode="text" placeholder={t.event.weeksPlaceholder} value={weeksText} onInput={x => { setWeeksText((x.target as HTMLInputElement).value); setError(''); }} />}
+                  </Field>
+                  <Field label={t.event.teacher}>{fid => <input id={fid} type="text" maxLength={500} placeholder={t.common.optional} value={e.teacher ?? ''} onInput={x => set({ teacher: (x.target as HTMLInputElement).value })} />}</Field>
+                </div>
               </div>
             </Disclosure>
           )}
-          {existing?.sourceKey && <p class="field-hint">{t.event.imported}</p>}
           {error && <p class="field-error" role="alert">{error}</p>}
-          {existing && (
-            <Button variant="danger" icon="trash" onClick={() => ui.open({
-              type: 'confirm', title: t.event.removeTitle, danger: true, confirm: t.common.remove,
-              message: existing.repeat === 'weekly' ? t.event.removeRepeating(existing.title) : t.event.removeOnce(existing.title),
-              onConfirm: () => store.act(d => act.deleteEvent(d, existing.id), { message: t.event.removed }),
-            })}>{t.common.remove}</Button>
-          )}
         </form>
       )}
     </Sheet>
@@ -243,7 +299,7 @@ export function FixedSheet({ eventId, day }: { eventId: string; day: DateKey }) 
   if (!event) return null;
   const when = event.allDay ? t.event.allDay : span(toMinutes(event.start), toMinutes(event.end));
   return (
-    <Sheet title={event.title} subtitle={joinFacts([relativeDay(day, today), when])} onClose={ui.close}>
+    <Sheet title={event.title} subtitle={joinFacts([relativeDay(day, today), when])} onClose={ui.pop}>
       <dl class="facts">
         {event.location && <><dt>{t.fixed.where}</dt><dd>{event.location}</dd></>}
         {event.teacher && <><dt>{t.fixed.with}</dt><dd>{event.teacher}</dd></>}
@@ -253,10 +309,40 @@ export function FixedSheet({ eventId, day }: { eventId: string; day: DateKey }) 
       <div class="action-grid">
         {day >= today && <Button variant="soft" icon="close" onClick={() => {
           store.act(d => act.cancelOccurrence(d, eventId, day), { message: event.repeat === 'once' ? t.event.removed : t.fixed.cancelledFor(inlineDay(day, today)) });
-          ui.close();
+          ui.pop();
         }}>{event.repeat === 'once' ? t.common.remove : t.fixed.notHappening}</Button>}
         <Button variant="soft" icon="edit" onClick={() => ui.open({ type: 'event', id: eventId, day })}>{t.common.edit}</Button>
       </div>
+    </Sheet>
+  );
+}
+
+/** Lists all overlapping events from a tapped cluster on Week; tapping one pushes its detail sheet. */
+export function OverlapSheet({ day, eventIds }: { day: DateKey; eventIds: string[] }) {
+  const { data, today } = useAppState();
+  const ui = useUi();
+  const events = data.events
+    .filter(e => eventIds.includes(e.id) && occurs(e, day))
+    .sort((a, b) => toMinutes(a.start) - toMinutes(b.start) || toMinutes(b.end) - toMinutes(a.end));
+  useEffect(() => {
+    if (!events.length) ui.pop();
+  }, [events.length, ui]);
+  if (!events.length) return null;
+  return (
+    <Sheet title={t.week.overlapTitle(events.length)} subtitle={relativeDay(day, today)} onClose={ui.pop}>
+      <ul class="plain-list event-list">
+        {events.map(e => (
+          <li key={e.id}>
+            <button type="button" class="event-row" onClick={() => ui.push({ type: 'fixed', eventId: e.id, day })}>
+              <span class="event-time">{clockTime(e.start)}<small>{clockTime(e.end)}</small></span>
+              <span class="grow">
+                <strong>{e.title}</strong>
+                <span>{joinFacts([e.location, e.teacher])}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
     </Sheet>
   );
 }

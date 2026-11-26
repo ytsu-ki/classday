@@ -29,10 +29,18 @@ export interface Item {
 export interface Note {
   id: string;
   text: string;
+  notebookId?: string;
   createdAt: string;
   updatedAt: string;
-  /** Set once the note has been turned into a to-do. */
-  itemId?: string;
+}
+
+export interface Notebook {
+  id: string;
+  name: string;
+  /** Color index (0..9), matching .course-0 .. .course-9. */
+  color: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -90,6 +98,10 @@ export interface SemesterPreferences {
   periods: ClassPeriod[];
 }
 
+/**
+ * What the last import changed, for undoing it: `before` holds the events it updated or removed as
+ * they were, `after` those it updated or added. (Earlier versions kept every event in both.)
+ */
 export interface ImportHistory {
   before: FixedEvent[];
   after: FixedEvent[];
@@ -143,6 +155,7 @@ export interface PlannerData {
   items: Item[];
   events: FixedEvent[];
   notes: Note[];
+  notebooks: Notebook[];
   noteDraft: string;
   settings: Settings;
   appearance: Appearance;

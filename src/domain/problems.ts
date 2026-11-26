@@ -11,6 +11,9 @@ export type Problem =
   | { code: 'note-too-long' }
   | { code: 'note-gone' }
   | { code: 'too-many-notes' }
+  | { code: 'notebook-empty' }
+  | { code: 'notebook-gone' }
+  | { code: 'too-many-notebooks' }
   | { code: 'too-many-events' }
   | { code: 'event-gone' }
   | { code: 'choice-unknown' }

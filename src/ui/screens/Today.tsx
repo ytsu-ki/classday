@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useAppState, useStore, useUi } from '../../app/context';
 import * as act from '../../domain/actions';
 import { upcomingReminders } from '../../domain/reminders';
 import { allDayFor } from '../../domain/schedule';
 import { addDays, daysBetween } from '../../domain/time';
 import { t } from '../../i18n';
-import { notificationPermission, requestNotifications, type NotificationPermission } from '../../platform/notifications';
+import { requestNotifications } from '../../platform/notifications';
 import { Button, IconButton } from '../components/controls';
 import { Icon } from '../components/Icon';
-import { DAY_SCALE, dayLayout, hourMarks, type DayEntry } from '../dayGrid';
+import { dayAxis, dayLayout, visibleHourMarks, type DayEntry } from '../dayGrid';
+import { createDraftSlot, DraftBlock, DRAFT_MIN, type DraftSlot } from '../draftSlot';
 import { duration, longDate, relativeDay, span, time, timeParts, weekdayName } from '../format';
-import { useSwipe } from '../useSwipe';
+import { useNotificationPermission } from '../reminders';
+import { usePager } from '../useSwipe';
+import { periodRows } from '../weekGrid';
 import { WelcomeCard } from './Welcome';
 
 type Entry = DayEntry | { kind: 'now'; start: number; end: number };
@@ -18,9 +21,9 @@ type Entry = DayEntry | { kind: 'now'; start: number; end: number };
 const px = (n: number) => `${n}px`;
 
 /**
- * One day of the timetable on a single time scale: events and classes, meals and free time each as
- * tall as they are long, with the hours down the side. The + in the header adds an event; a
- * sideways swipe moves to the next or previous day.
+ * One day of the timetable on a single elastic time scale: events and classes, meals and free time
+ * fit inside one screen, with the hours down the side. Tapping future free time places a resizable
+ * dashed draft slot whose body opens EventSheet with the chosen span.
  */
 export function TodayScreen() {
   const { data, today, minute } = useAppState();
@@ -28,11 +31,40 @@ export function TodayScreen() {
   const day = ui.day;
   const isToday = day === today;
   const isPast = day < today;
-  const [slide, setSlide] = useState<'next' | 'previous' | ''>('');
-  const move = (by: 1 | -1) => { setSlide(by > 0 ? 'next' : 'previous'); ui.showDay(addDays(day, by)); };
-  const swipe = useSwipe(move);
-  const layout = dayLayout(data, day, isToday ? minute : undefined);
-  const y = (m: number) => (m - layout.start) * DAY_SCALE;
+  const { slide, setSlide, move, swipe } = usePager(useCallback((by: 1 | -1) => ui.showDay(addDays(day, by)), [day, ui]), Boolean(ui.sheet));
+  const periods = useMemo(() => periodRows(data), [data.timetable.semester]);
+  const layout = useMemo(() => dayLayout(data, day, isToday ? minute : undefined), [data, day, isToday ? minute : undefined]);
+  const axis = useMemo(() => dayAxis(layout), [layout]);
+  const hours = useMemo(() => visibleHourMarks(layout, axis), [layout, axis]);
+  const y = (m: number) => axis.y(m);
+  const [draft, setDraft] = useState<DraftSlot | null>(null);
+  const dayRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+
+  useEffect(() => { setDraft(null); }, [day]);
+
+  useEffect(() => {
+    if (!draft) return;
+    const unregister = ui.registerBack(() => {
+      if (ui.sheet) return false;
+      setDraft(null);
+      return true;
+    });
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-draft-slot]') || target?.closest('.day-free-box')) return;
+      setDraft(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !ui.sheet) setDraft(null); };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      unregister();
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [draft, ui]);
+
   const entries: Entry[] = [...layout.entries];
   const showNow = isToday && minute >= layout.start && minute <= layout.end;
   // The current time reads in order with the rest, and draws across the day where it falls.
@@ -43,6 +75,20 @@ export function TodayScreen() {
   const allDay = allDayFor(data, day);
   const isOver = (entry: Entry) => isPast || (isToday && entry.end <= minute);
   const empty = !data.items.length && !data.events.length;
+  const range = { start: layout.start, end: layout.end };
+
+  const placeDraftAt = (entry: { start: number; end: number }, e: MouseEvent) => {
+    const list = listRef.current;
+    let targetMinute = entry.start;
+    if (list && e.clientY > 0) {
+      const rect = list.getBoundingClientRect();
+      if (rect.height > 0) {
+        const clamped = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+        targetMinute = Math.max(entry.start, Math.min(Math.max(entry.start, entry.end - DRAFT_MIN), axis.minuteAt(clamped)));
+      }
+    }
+    setDraft(createDraftSlot(day, targetMinute, periods, range));
+  };
 
   return (
     <section class="screen today swipe-area" aria-labelledby="today-title" {...swipe}>
@@ -55,7 +101,7 @@ export function TodayScreen() {
           <IconButton icon="back" label={t.today.previousDay} onClick={() => move(-1)} />
           {!isToday && <Button size="sm" onClick={() => { setSlide(day > today ? 'previous' : 'next'); ui.showDay(today); }}>{t.common.today}</Button>}
           <IconButton icon="forward" label={t.today.nextDay} onClick={() => move(1)} />
-          <IconButton icon="plus" tone="accent" label={t.today.addEvent} onClick={() => ui.open({ type: 'event', id: null, day })} />
+          <IconButton icon="plus" tone="accent" label={t.today.addEvent} onClick={() => { setDraft(null); ui.open({ type: 'event', id: null, day }); }} />
         </div>
       </header>
       {empty && isToday && <WelcomeCard />}
@@ -65,23 +111,42 @@ export function TodayScreen() {
           <ul class="plain-list all-day" aria-label={t.event.allDay}>
             {allDay.map(e => (
               <li key={e.id}>
-                <button type="button" class="all-day-chip" onClick={() => ui.open({ type: 'fixed', eventId: e.id, day })}>
+                <button type="button" class="all-day-chip" onClick={() => { setDraft(null); ui.open({ type: 'fixed', eventId: e.id, day }); }}>
                   <span class="all-day-tag">{t.event.allDay}</span><strong>{e.title}</strong>{e.location && <span>{e.location}</span>}
                 </button>
               </li>
             ))}
           </ul>
         )}
-        <div class="day" style={{ height: px(y(layout.end)) }}>
+        <div ref={dayRef} class="day" style={{ height: px(axis.height) }}>
           <div class="day-hours" aria-hidden="true">
             {/* An hour right beside the current time leaves its label to the time. */}
-            {hourMarks(layout).map(h => <div class="day-hour" style={{ top: px(y(h)) }}>{!(showNow && Math.abs(h - minute) < 20) && <TimeCell at={h} />}</div>)}
+            {hours.map(h => <div class="day-hour" style={{ top: px(y(h)) }}>{!(showNow && Math.abs(y(h) - y(minute)) < 16) && <TimeCell at={h} />}</div>)}
           </div>
-          <ol class="day-items">
+          <ol ref={listRef} class="day-items">
             {entries.map(entry => (
               <DayRow entry={entry} day={day} y={y} over={isOver(entry)}
+                onPickFree={e => placeDraftAt(entry, e)}
+                onOpenEvent={id => { setDraft(null); ui.open({ type: 'fixed', eventId: id, day }); }}
                 key={entry.kind === 'event' || entry.kind === 'meal' ? `${entry.block.id}-${entry.start}` : `${entry.kind}-${entry.start}`} />
             ))}
+            {draft && draft.day === day && (
+              <li class="day-draft-layer">
+                <DraftBlock
+                  slot={draft}
+                  axis={axis}
+                  range={range}
+                  periods={periods}
+                  containerRef={listRef}
+                  onChange={setDraft}
+                  onEdit={() => {
+                    const picked = draft;
+                    setDraft(null);
+                    ui.open({ type: 'event', id: null, day: picked.day, start: picked.start, end: picked.end });
+                  }}
+                />
+              </li>
+            )}
           </ol>
         </div>
       </section>
@@ -95,11 +160,16 @@ function TimeCell({ at }: { at: number }) {
 }
 
 /**
- * One thing on the day, placed by its start and as tall as it lasts. What is already over stays,
- * quieter; free time still ahead takes a tap to add an event there.
+ * One thing on the day, placed by its start and as tall as the elastic scale gives it.
  */
-function DayRow({ entry, day, y, over }: { entry: Entry; day: string; y: (minute: number) => number; over: boolean }) {
-  const ui = useUi();
+function DayRow({ entry, y, over, onPickFree, onOpenEvent }: {
+  entry: Entry;
+  day: string;
+  y: (minute: number) => number;
+  over: boolean;
+  onPickFree: (e: MouseEvent) => void;
+  onOpenEvent: (id: string) => void;
+}) {
   const past = over ? ' is-over' : '';
   if (entry.kind === 'now') {
     return (
@@ -113,30 +183,32 @@ function DayRow({ entry, day, y, over }: { entry: Entry; day: string; y: (minute
   const box = { top: px(top + 1), height: px(Math.max(height - 2, 0)) };
   if (entry.kind === 'free') {
     const label = t.today.free(duration(entry.end - entry.start));
+    const freeSize = height < 18 ? ' is-tiny' : height < 24 ? ' is-short' : '';
     return (
-      <li class={`day-free${past}`} style={box}>
+      <li class={`day-free${past}${freeSize}`} style={box}>
         {over
-          ? <span class="day-free-box">{label}</span>
-          : <button type="button" class="day-free-box" aria-label={t.today.addEventAt(time(entry.start))} onClick={() => ui.open({ type: 'event', id: null, day, start: entry.start })}>
-            {label}<span class="free-add">{t.common.add}</span>
+          ? <span class="day-free-box"><span class="day-free-label">{label}</span></span>
+          : <button type="button" class="day-free-box" aria-label={t.today.addEventAt(time(entry.start))} onClick={onPickFree}>
+            <span class="day-free-label">{label}</span><span class="free-add">{t.common.add}</span>
           </button>}
       </li>
     );
   }
   if (entry.kind === 'meal') {
+    const short = height < 32 ? ' is-short' : '';
     return (
-      <li class={`day-meal${past}`} style={box}>
-        <Icon name="meal" size={15} /> {t.common.meals[entry.block.id as 'lunch' | 'dinner']}
+      <li class={`day-meal${past}${short}`} style={box}>
+        <Icon name="meal" size={14} /> {t.common.meals[entry.block.id as 'lunch' | 'dinner']}
       </li>
     );
   }
   const f = entry.block;
-  // Short events keep the title and put the times beside it; the shortest show the title alone.
-  const size = height < 32 ? ' is-tiny' : height < 52 ? ' is-short' : '';
+  const size = height < 28 ? ' is-tiny' : height < 44 ? ' is-short' : '';
+  const narrow = entry.lanes > 1 ? ' is-narrow' : '';
   const lane = { left: `${(entry.lane / entry.lanes) * 100}%`, width: entry.lanes > 1 ? `calc(${100 / entry.lanes}% - 3px)` : '100%' };
   return (
-    <li class={`day-event${past}${size}`} style={{ ...box, ...lane }}>
-      <button type="button" class="card card-class" onClick={() => ui.open({ type: 'fixed', eventId: f.id, day })}>
+    <li class={`day-event${past}${size}${narrow}`} style={{ ...box, ...lane }}>
+      <button type="button" class="card card-class" onClick={() => onOpenEvent(f.id)}>
         <strong class="card-title">{f.title}</strong>
         <span class="card-meta">{span(f.start, f.end)}{f.event?.location ? `${t.format.separator}${f.event.location}` : ''}</span>
       </button>
@@ -146,13 +218,12 @@ function DayRow({ entry, day, y, over }: { entry: Entry; day: string; y: (minute
 
 /**
  * Asks once, at a moment it matters (there is something to remind about), whether reminders
- * may arrive as notifications. Either answer is remembered; Settings → Reminders can change it.
+ * may arrive as notifications. Either answer is remembered; Settings -> Reminders can change it.
  */
 function ReminderPrompt() {
   const { data } = useAppState();
   const store = useStore();
-  const [permission, setPermission] = useState<NotificationPermission | null>(null);
-  useEffect(() => { notificationPermission().then(setPermission); }, []);
+  const [permission, setPermission] = useNotificationPermission();
   if (permission !== 'prompt' || data.reminders.asked || !upcomingReminders(data, new Date()).length) return null;
   const answer = async (allow: boolean) => {
     if (allow) setPermission(await requestNotifications());

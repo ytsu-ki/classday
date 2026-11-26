@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'preact/hooks';
 import { minimizeApp, watchLifecycle } from '../platform/native';
 import { Icon, type IconName } from '../ui/components/Icon';
+import { SheetActiveContext } from '../ui/components/Sheet';
 import { applyAccent, loadWallpaper } from '../ui/theme/accent';
 import { applyTheme, watchSystemTheme } from '../ui/theme/mode';
 import * as act from '../domain/actions';
@@ -19,11 +20,12 @@ import { TodayScreen } from '../ui/screens/Today';
 import { WeekScreen } from '../ui/screens/Week';
 import { CaptureSheet } from '../ui/sheets/CaptureSheet';
 import { ClassTimesSheet } from '../ui/sheets/ClassTimesSheet';
-import { EventSheet, FixedSheet } from '../ui/sheets/EventSheet';
+import { EventSheet, FixedSheet, OverlapSheet } from '../ui/sheets/EventSheet';
 import { ImportSheet } from '../ui/sheets/ImportSheet';
 import { ItemSheet } from '../ui/sheets/ItemSheet';
-import { ConfirmSheet, NoteSheet, RestoreSheet } from '../ui/sheets/MiscSheets';
+import { ConfirmSheet, NotebookSheet, NoteSheet, RestoreSheet } from '../ui/sheets/MiscSheets';
 import { StoreContext, UiContext, useAppState, useStore, useUi, type SheetSpec, type Ui, type View } from './context';
+import { initialNav, PARENT_VIEW, reduceBack, reduceNav } from './sheetStack';
 import type { Store } from './store';
 
 const TABS: { view: 'today' | 'week' | 'plans' | 'notes'; icon: IconName }[] = [
@@ -33,34 +35,45 @@ const TABS: { view: 'today' | 'week' | 'plans' | 'notes'; icon: IconName }[] = [
   { view: 'notes', icon: 'notes' },
 ];
 
-const PARENT: Partial<Record<View, View>> = { day: 'settings', reminders: 'settings', appearance: 'settings', timetable: 'settings', data: 'settings' };
-
 export function App({ store, notice }: { store: Store; notice?: string }) {
   // Set before anything renders; a new language re-renders everything below (see the `key` on .app),
   // since every component reads `t` while rendering.
   const [lang, setLang] = useState<Language>(() => applyLanguage(store.get().data.appearance.language));
-  const [view, setView] = useState<View>('today');
-  const [day, setDay] = useState(store.get().today);
-  const [sheet, setSheet] = useState<SheetSpec | null>(null);
+  const [nav, dispatch] = useReducer(reduceNav, store.get().today, initialNav);
   const mainRef = useRef<HTMLElement>(null);
-  const state = useRef({ view, day, sheet });
-  state.current = { view, day, sheet };
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  const backHandlers = useRef<(() => boolean)[]>([]);
 
   const go = useCallback((next: View) => {
-    setSheet(null);
-    setView(next);
-    if (next === 'today' && state.current.view !== 'today') setDay(store.get().today);
+    dispatch({ type: 'go', view: next, today: store.get().today });
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0 });
       mainRef.current?.focus({ preventScroll: true });
     });
   }, [store]);
 
+  const registerBack = useCallback((handler: () => boolean) => {
+    backHandlers.current.push(handler);
+    return () => {
+      const i = backHandlers.current.lastIndexOf(handler);
+      if (i >= 0) backHandlers.current.splice(i, 1);
+    };
+  }, []);
+
   const ui: Ui = useMemo(() => ({
-    view, go, day, showDay: setDay, sheet,
-    open: setSheet,
-    close: () => setSheet(null),
-  }), [view, go, day, sheet]);
+    view: nav.view,
+    go,
+    day: nav.day,
+    showDay: day => dispatch({ type: 'showDay', day }),
+    sheets: nav.sheets,
+    sheet: nav.sheets.at(-1) ?? null,
+    open: sheet => dispatch({ type: 'open', sheet }),
+    push: sheet => dispatch({ type: 'push', sheet }),
+    pop: () => dispatch({ type: 'pop' }),
+    close: () => dispatch({ type: 'closeAll' }),
+    registerBack,
+  }), [nav.view, nav.day, nav.sheets, go, registerBack]);
 
   // The phone's languages, and on Android 13+ a language chosen for the app in Android's settings.
   const syncLanguage = useCallback(() => {
@@ -71,15 +84,21 @@ export function App({ store, notice }: { store: Store; notice?: string }) {
   }, [store]);
   useEffect(syncLanguage, [syncLanguage]);
 
-  // Android Back: close a sheet, then go up, then back to Today, then leave the app.
+  // Android Back: let the active sheet/sub-page intercept, then pop stack, go up, Today, or leave.
   const onBack = useCallback(() => {
-    const s = state.current;
-    if (s.sheet) setSheet(null);
-    else if (PARENT[s.view]) go(PARENT[s.view]!);
-    else if (s.view !== 'today') go('today');
-    else if (s.day !== store.get().today) setDay(store.get().today);
-    else minimizeApp();
-  }, [go, store]);
+    const topHandler = backHandlers.current.at(-1);
+    if (topHandler?.()) return;
+    const { state: next, minimize } = reduceBack(navRef.current, store.get().today);
+    if (minimize) { minimizeApp(); return; }
+    const viewChanged = next.view !== navRef.current.view;
+    dispatch({ type: 'replace', state: next });
+    if (viewChanged) {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0 });
+        mainRef.current?.focus({ preventScroll: true });
+      });
+    }
+  }, [store]);
 
   // Apply the theme, accent and language before the first paint, and again whenever they change.
   useLayoutEffect(() => {
@@ -122,20 +141,39 @@ export function App({ store, notice }: { store: Store; notice?: string }) {
     },
   }), [onBack, store, syncLanguage]);
 
-  // Keep "now" current and roll over at midnight.
+  // Keep "now" current and roll over at midnight without overriding a day the user picked.
   useEffect(() => {
     const timer = setInterval(() => store.refresh(), 30_000);
     return () => clearInterval(timer);
   }, [store]);
-  const today = store.get().today;
+  const lastToday = useRef(store.get().today);
   useEffect(() => store.subscribe(s => {
-    if (s.today !== today) setDay(s.today);
-  }), [store, today]);
+    if (s.today !== lastToday.current) {
+      const previousToday = lastToday.current;
+      lastToday.current = s.today;
+      dispatch({ type: 'rollover', previousToday, nextToday: s.today });
+    }
+  }), [store]);
+
+  // Desktop Ctrl/Cmd+Z undo when no dialog or text input is active.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+      if (navRef.current.sheets.length > 0 || !store.get().canUndo) return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable)) return;
+      e.preventDefault();
+      store.undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [store]);
 
   useEffect(() => {
     if (notice) store.showToast(notice, 'info');
   }, []);
 
+  const { view } = nav;
   return (
     <StoreContext.Provider value={store}>
       <UiContext.Provider value={ui}>
@@ -156,17 +194,37 @@ export function App({ store, notice }: { store: Store; notice?: string }) {
             {view === 'data' && <DataScreen />}
           </main>
           <ToastView />
-          {sheet && <SheetHost sheet={sheet} />}
+          {nav.sheets.map((s, i) => (
+            <SheetActiveContext.Provider key={sheetKey(s, i)} value={i === nav.sheets.length - 1}>
+              <SheetHost sheet={s} />
+            </SheetActiveContext.Provider>
+          ))}
         </div>
       </UiContext.Provider>
     </StoreContext.Provider>
   );
 }
 
+function sheetKey(sheet: SheetSpec, index: number): string {
+  switch (sheet.type) {
+    case 'capture': return 'capture';
+    case 'item': return `item-${sheet.id}`;
+    case 'note': return `note-${sheet.id}-${sheet.notebookId ?? ''}`;
+    case 'notebook': return `notebook-${sheet.id}`;
+    case 'event': return `event-${sheet.id}-${sheet.day}-${sheet.start}-${sheet.end}`;
+    case 'fixed': return `fixed-${sheet.eventId}`;
+    case 'overlap': return `overlap-${sheet.day}-${sheet.eventIds.join(',')}`;
+    case 'import': return 'import';
+    case 'class-times': return 'class-times';
+    case 'restore': return 'restore';
+    case 'confirm': return `confirm-${index}-${sheet.title}`;
+  }
+}
+
 function Nav() {
   const ui = useUi();
   const { save } = useAppState();
-  const active = PARENT[ui.view] ?? ui.view;
+  const active = PARENT_VIEW[ui.view] ?? ui.view;
   return (
     <nav class="nav" aria-label={t.nav.main}>
       <div class="nav-brand" aria-hidden="true">
@@ -227,9 +285,11 @@ function SheetHost({ sheet }: { sheet: SheetSpec }) {
   switch (sheet.type) {
     case 'capture': return <CaptureSheet key="capture" due={sheet.due} />;
     case 'item': return <ItemSheet key={`item-${sheet.id}`} id={sheet.id} />;
-    case 'note': return <NoteSheet key={`note-${sheet.id}`} id={sheet.id} />;
-    case 'event': return <EventSheet key={`event-${sheet.id}-${sheet.day}-${sheet.start}`} id={sheet.id} day={sheet.day} start={sheet.start} />;
+    case 'note': return <NoteSheet key={`note-${sheet.id}-${sheet.notebookId ?? ''}`} id={sheet.id} notebookId={sheet.notebookId} />;
+    case 'notebook': return <NotebookSheet key={`notebook-${sheet.id}`} id={sheet.id} />;
+    case 'event': return <EventSheet key={`event-${sheet.id}-${sheet.day}-${sheet.start}-${sheet.end}`} id={sheet.id} day={sheet.day} start={sheet.start} end={sheet.end} />;
     case 'fixed': return <FixedSheet key={`fixed-${sheet.eventId}`} eventId={sheet.eventId} day={sheet.day} />;
+    case 'overlap': return <OverlapSheet key={`overlap-${sheet.day}-${sheet.eventIds.join(',')}`} day={sheet.day} eventIds={sheet.eventIds} />;
     case 'import': return <ImportSheet key="import" />;
     case 'class-times': return <ClassTimesSheet key="class-times" />;
     case 'restore': return <RestoreSheet key="restore" report={sheet.report} source={sheet.source} />;

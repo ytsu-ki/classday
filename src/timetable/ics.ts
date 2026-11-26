@@ -82,13 +82,14 @@ export function parseIcs(text: string, { from, until, group, timeZone }: IcsOpti
         continue;
       }
       if (start.date !== end.date || end.time <= start.time) throw new ProblemError({ code: 'ics-overnight', title: event.summary });
+      const location = (details.item.location || '').trim().slice(0, 500);
       const sourceKey = `${event.uid}:${occurrence.toString()}`;
       if (keys.has(sourceKey)) continue;
       keys.add(sourceKey);
       events.push({
-        id: uid(), title: details.item.summary || event.summary, category: 'once', start: start.time, end: end.time,
+        id: uid(), title: (details.item.summary || event.summary).trim(), category: 'once', start: start.time, end: end.time,
         date: start.date, from: start.date, until: start.date, repeat: 'once', parity: 'all', weekday: dateOf(start.date).getDay(),
-        location: details.item.location || '', sourceKey, importGroup: group,
+        ...(location ? { location } : {}), sourceKey, importGroup: group,
       });
       if (events.length > 2000) throw new ProblemError({ code: 'ics-too-many-lessons' });
       if (!event.isRecurring()) break;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayLayout, hourMarks } from '../src/ui/dayGrid';
+import { dayAxis, dayLayout, hourMarks, visibleHourMarks } from '../src/ui/dayGrid';
 import { data, once, TODAY, weekly } from './helpers';
 
 const plain = (layout: ReturnType<typeof dayLayout>) =>
@@ -37,5 +37,29 @@ describe('the day axis', () => {
     const d = data({ events: [once('Seminar', TODAY, '10:00', '11:00'), once('Office hours', TODAY, '10:30', '11:30')] });
     const events = dayLayout(d, TODAY).entries.filter(e => e.kind === 'event');
     expect(events.map(e => e.kind === 'event' && [e.lane, e.lanes])).toEqual([[0, 2], [1, 2]]);
+  });
+
+  it('fits a full day inside one phone screen on a monotonic elastic axis without overlapping hours', () => {
+    const busy = data({
+      events: [
+        once('P1-2', TODAY, '08:00', '09:40'),
+        once('P3-4', TODAY, '10:10', '11:50'),
+        once('P5-6', TODAY, '13:40', '15:20'),
+        once('P7-8', TODAY, '15:30', '17:10'),
+        once('P9-10', TODAY, '18:30', '20:10'),
+      ],
+    });
+    const layout = dayLayout(busy, TODAY);
+    const axis = dayAxis(layout);
+    expect(axis.height).toBeGreaterThanOrEqual(360);
+    expect(axis.height).toBeLessThanOrEqual(560);
+    for (let m = layout.start; m < layout.end; m += 5) expect(axis.y(m + 5)).toBeGreaterThanOrEqual(axis.y(m));
+    // Inverse lookup maps pixel coordinates near an event's midpoint back within a few minutes.
+    const mid = Math.round((axis.y(480) + axis.y(580)) / 2);
+    expect(Math.abs(axis.minuteAt(mid) - 530)).toBeLessThanOrEqual(4);
+    const marks = visibleHourMarks(layout, axis);
+    for (let i = 1; i < marks.length; i++) {
+      expect(axis.y(marks[i]) - axis.y(marks[i - 1])).toBeGreaterThanOrEqual(24);
+    }
   });
 });

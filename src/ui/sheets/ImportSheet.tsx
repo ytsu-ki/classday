@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useAppState, useStore, useUi } from '../../app/context';
 import { EXAMPLE_PERIODS, periodsInUse, periodsProblem, retimeClasses, withPeriodAdded } from '../../domain/periods';
 import { ProblemError, type Problem } from '../../domain/problems';
@@ -22,13 +22,16 @@ const TEXT_MAX_BYTES = 200 * 1024;
 
 type Source = 'file' | 'ics';
 
+type SemesterStep = { name: 'semester'; entries: ClassEntry[]; skipped: number; fromFile: boolean; origin: 'choose' | 'text' };
+type IcsStep = { name: 'ics' };
+
 type Step =
   | { name: 'choose' }
   | { name: 'text' }
   /** `fromFile`: the class times were read from the file. */
-  | { name: 'semester'; entries: ClassEntry[]; skipped: number; fromFile: boolean }
-  | { name: 'ics' }
-  | { name: 'preview'; source: Source; events: FixedEvent[]; group: string; diff: ImportDiff; conflicts: ImportConflict[]; semester?: SemesterPreferences };
+  | SemesterStep
+  | IcsStep
+  | { name: 'preview'; source: Source; events: FixedEvent[]; group: string; diff: ImportDiff; conflicts: ImportConflict[]; semester?: SemesterPreferences; backTo: SemesterStep | IcsStep };
 
 /**
  * The class times an import starts from: those the file gives, else the saved ones, else the
@@ -52,21 +55,6 @@ function withClassTimes(data: PlannerData, semester?: SemesterPreferences): Plan
   return moved;
 }
 
-function parseInWorker(text: string, options: IcsOptions): Promise<FixedEvent[]> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('../../timetable/ics.worker.ts', import.meta.url), { type: 'module' });
-    const timer = setTimeout(() => { worker.terminate(); reject(new Error(t.importer.tooSlow)); }, 15_000);
-    const finish = () => { clearTimeout(timer); worker.terminate(); };
-    worker.onmessage = (e: MessageEvent<{ events?: FixedEvent[]; problem?: Problem }>) => {
-      finish();
-      if (e.data.problem) reject(new ProblemError(e.data.problem));
-      else resolve(e.data.events ?? []);
-    };
-    worker.onerror = () => { finish(); reject(new Error(t.importer.calendarFailed)); };
-    worker.postMessage({ text, options });
-  });
-}
-
 export function ImportSheet() {
   const { data, today } = useAppState();
   const store = useStore();
@@ -83,76 +71,121 @@ export function ImportSheet() {
   const [until, setUntil] = useState(addDays(saved?.firstMonday || weekOf(today), 139));
   const [file, setFile] = useState<File | null>(null);
   const [removeMissing, setRemoveMissing] = useState(true);
+  const mounted = useRef(true);
+  const workerCancel = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      workerCancel.current?.();
+      workerCancel.current = null;
+    };
+  }, []);
 
-  const preview = (source: Source, events: FixedEvent[], group: string, semester?: SemesterPreferences) => {
-    setError('');
-    const after = withClassTimes(data, semester);
-    setStep({ name: 'preview', source, events, group, diff: diffImport(after, events, group), conflicts: importConflicts(after, events), semester });
+  const parseIcsTracked = (icsText: string, options: IcsOptions): Promise<FixedEvent[]> => {
+    workerCancel.current?.();
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(new URL('../../timetable/ics.worker.ts', import.meta.url), { type: 'module' });
+      let done = false;
+      const cleanup = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        worker.terminate();
+        if (workerCancel.current === cancel) workerCancel.current = null;
+      };
+      const cancel = () => {
+        cleanup();
+      };
+      const timer = setTimeout(() => { cleanup(); reject(new Error(t.importer.tooSlow)); }, 15_000);
+      workerCancel.current = cancel;
+      worker.onmessage = (e: MessageEvent<{ events?: FixedEvent[]; problem?: Problem }>) => {
+        cleanup();
+        if (e.data.problem) reject(new ProblemError(e.data.problem));
+        else resolve(e.data.events ?? []);
+      };
+      worker.onerror = () => { cleanup(); reject(new Error(t.importer.calendarFailed)); };
+      worker.postMessage({ text: icsText, options });
+    });
   };
 
-  const found = (entries: ClassEntry[], skipped: number, times: ClassPeriod[] = []) => {
+  const preview = (source: Source, events: FixedEvent[], group: string, backTo: SemesterStep | IcsStep, semester?: SemesterPreferences) => {
+    setError('');
+    const after = withClassTimes(data, semester);
+    setStep({ name: 'preview', source, events, group, diff: diffImport(after, events, group), conflicts: importConflicts(after, events), semester, backTo });
+  };
+
+  const found = (entries: ClassEntry[], skipped: number, origin: 'choose' | 'text', times: ClassPeriod[] = []) => {
     if (!entries.length) return setError(t.problems['timetable-no-classes']());
     setError('');
     setPeriods(startingPeriods(times, saved?.periods ?? [], Math.max(0, ...usedPeriods(entries), periodsInUse(data))));
-    setStep({ name: 'semester', entries, skipped, fromFile: times.length > 0 && usedPeriods(entries).length > 0 });
+    setStep({ name: 'semester', entries, skipped, fromFile: times.length > 0 && usedPeriods(entries).length > 0, origin });
   };
 
   const readFile = async () => {
     // Any file can be chosen: Android greys out files whose type isn't listed, and saved pages
     // and exports often carry odd types. What the file holds decides how it is read.
     const chosen = await pickFile('');
-    if (!chosen) return;
+    if (!chosen || !mounted.current) return;
     setBusy(true); setError('');
     try {
       const { readTimetableFile } = await import('../../timetable/files');
       const result = await readTimetableFile(chosen);
+      if (!mounted.current) return;
       if (result.kind === 'calendar') { setFile(chosen); setStep({ name: 'ics' }); }
-      else found(result.entries, result.skipped, result.periods);
+      else found(result.entries, result.skipped, 'choose', result.periods);
     } catch (e) {
-      setError(errorText(e, t.problems['file-unreadable']()));
+      if (mounted.current) setError(errorText(e, t.problems['file-unreadable']()));
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
 
   const openText = async () => {
     const chosen = await pickFile('.txt,.csv,text/plain');
-    if (!chosen) return;
+    if (!chosen || !mounted.current) return;
     if (chosen.size > TEXT_MAX_BYTES) return setError(t.problems['text-too-large']());
-    setText(await readText(chosen));
+    const content = await readText(chosen);
+    if (!mounted.current) return;
+    setText(content);
     setError('');
   };
 
   const readPasted = () => {
     if (text.length > TEXT_MAX_BYTES) return setError(t.problems['text-too-large']());
     const result = parseTimetableText(text);
-    found(result.entries, result.skipped);
+    found(result.entries, result.skipped, 'text');
   };
 
-  const buildFromEntries = (entries: ClassEntry[]) => {
+  const buildFromEntries = (s: SemesterStep) => {
     if (!name.trim()) return setError(t.importer.nameFirst);
     try {
       const problem = periodsProblem(periods, periodsInUse(data));
       if (problem) throw new ProblemError(problem);
       const semester: SemesterPreferences = { firstMonday, periods };
-      preview('file', buildEvents(entries, semester, `file-${name.trim().slice(0, 80)}`), `file-${name.trim().slice(0, 80)}`, semester);
+      const group = `file-${name.trim().slice(0, 80)}`;
+      preview('file', buildEvents(s.entries, semester, group), group, s, semester);
     } catch (e) {
       setError(errorText(e, t.importer.calendarFailed));
     }
   };
 
-  const readIcs = async () => {
+  const readIcs = async (s: IcsStep) => {
     if (!file) return setError(t.importer.chooseFileFirst);
     if (file.size > ICS_MAX_BYTES) return setError(t.problems['ics-size']());
     if (!name.trim()) return setError(t.importer.nameFirst);
     setBusy(true); setError('');
     try {
       const group = `ics-${name.trim().slice(0, 80)}`;
-      preview('ics', await parseInWorker(await readText(file), { from, until, group }), group);
+      const icsText = await readText(file);
+      if (!mounted.current) return;
+      const events = await parseIcsTracked(icsText, { from, until, group });
+      if (!mounted.current) return;
+      preview('ics', events, group, s);
     } catch (e) {
-      setError(errorText(e, t.importer.calendarFailed));
+      if (mounted.current) setError(errorText(e, t.importer.calendarFailed));
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -167,12 +200,20 @@ export function ImportSheet() {
     if (done) ui.close();
   };
 
+  const stepBack = () => {
+    setError('');
+    if (step.name === 'text' || step.name === 'ics') setStep({ name: 'choose' });
+    else if (step.name === 'semester') setStep(step.origin === 'text' ? { name: 'text' } : { name: 'choose' });
+    else if (step.name === 'preview') setStep(step.backTo);
+    else ui.close();
+  };
+
   const errorLine = error && <p class="field-error" role="alert">{error}</p>;
 
   if (step.name === 'choose') {
     return (
       <Sheet title={t.importer.title} onClose={ui.close}>
-        <div class="choice-list">
+        <div class="choice-list" data-step="choose">
           <button type="button" class="choice" disabled={busy} onClick={readFile}>
             <Icon name="download" />
             <span><strong>{busy ? t.importer.readingFile : t.importer.fromFile}</strong><span>{t.importer.fileHint}</span></span>
@@ -190,11 +231,11 @@ export function ImportSheet() {
 
   if (step.name === 'text') {
     return (
-      <Sheet title={t.importer.textTitle} onClose={ui.close} footer={<>
-        <Button variant="ghost" onClick={() => setStep({ name: 'choose' })}>{t.common.back}</Button>
+      <Sheet title={t.importer.textTitle} onClose={ui.close} onBack={stepBack} footer={<>
+        <Button variant="ghost" onClick={stepBack}>{t.common.back}</Button>
         <Button variant="primary" class="grow" disabled={!text.trim()} onClick={readPasted}>{t.importer.read}</Button>
       </>}>
-        <div class="form-stack">
+        <div class="form-stack" data-step="text">
           <Field label={t.importer.textLabel} hint={t.importer.textFormat}>
             {fid => <textarea id={fid} class="timetable-text" rows={9} data-autofocus placeholder={t.importer.textPlaceholder} value={text}
               onInput={e => { setText((e.target as HTMLTextAreaElement).value); setError(''); }} />}
@@ -209,11 +250,11 @@ export function ImportSheet() {
   if (step.name === 'semester') {
     const used = usedPeriods(step.entries);
     return (
-      <Sheet title={t.importer.checkDetails} subtitle={t.importer.found(step.entries.length, step.skipped)} onClose={ui.close} footer={<>
-        <Button variant="ghost" onClick={() => setStep({ name: 'choose' })}>{t.common.back}</Button>
-        <Button variant="primary" class="grow" onClick={() => buildFromEntries(step.entries)}>{t.common.preview}</Button>
+      <Sheet title={t.importer.checkDetails} subtitle={t.importer.found(step.entries.length, step.skipped)} onClose={ui.close} onBack={stepBack} footer={<>
+        <Button variant="ghost" onClick={stepBack}>{t.common.back}</Button>
+        <Button variant="primary" class="grow" onClick={() => buildFromEntries(step)}>{t.common.preview}</Button>
       </>}>
-        <div class="form-stack">
+        <div class="form-stack" data-step="semester">
           <Field label={t.importer.mondayWeekOne} hint={t.importer.remembered}>
             {fid => <input id={fid} type="date" value={firstMonday} onInput={e => { setFirstMonday((e.target as HTMLInputElement).value); setError(''); }} />}
           </Field>
@@ -235,12 +276,12 @@ export function ImportSheet() {
 
   if (step.name === 'ics') {
     return (
-      <Sheet title={t.importer.calendarTitle} onClose={ui.close} footer={<>
-        <Button variant="ghost" onClick={() => setStep({ name: 'choose' })}>{t.common.back}</Button>
-        <Button variant="primary" class="grow" busy={busy} onClick={readIcs}>{busy ? t.importer.reading : t.common.preview}</Button>
+      <Sheet title={t.importer.calendarTitle} onClose={ui.close} onBack={stepBack} footer={<>
+        <Button variant="ghost" onClick={stepBack}>{t.common.back}</Button>
+        <Button variant="primary" class="grow" busy={busy} onClick={() => readIcs(step)}>{busy ? t.importer.reading : t.common.preview}</Button>
       </>}>
-        <div class="form-stack">
-          <Button variant="soft" icon="calendar" onClick={async () => { const f = await pickFile('.ics,text/calendar'); if (f) { setFile(f); setError(''); } }}>
+        <div class="form-stack" data-step="ics">
+          <Button variant="soft" icon="calendar" onClick={async () => { const f = await pickFile('.ics,text/calendar'); if (f && mounted.current) { setFile(f); setError(''); } }}>
             {file ? file.name : t.importer.chooseFile}
           </Button>
           <Field label={t.importer.timetableName} hint={t.importer.timetableNameHint}>
@@ -260,44 +301,46 @@ export function ImportSheet() {
   const changes = [...diff.added.map(e => ({ e, isNew: true })), ...diff.updated.map(x => ({ e: x.after, isNew: false }))];
   const leaveOut = (event: FixedEvent) => {
     const events = step.events.filter(e => e.sourceKey !== event.sourceKey);
-    if (events.length) preview(step.source, events, step.group, step.semester);
+    if (events.length) preview(step.source, events, step.group, step.backTo, step.semester);
   };
   return (
-    <Sheet title={t.importer.review} subtitle={t.importer.reviewSummary(diff.added.length, diff.updated.length, diff.unchanged.length)} onClose={ui.close} footer={<>
-      <Button variant="ghost" onClick={() => setStep(step.source === 'ics' ? { name: 'ics' } : { name: 'choose' })}>{t.common.back}</Button>
+    <Sheet title={t.importer.review} subtitle={t.importer.reviewSummary(diff.added.length, diff.updated.length, diff.unchanged.length)} onClose={ui.close} onBack={stepBack} footer={<>
+      <Button variant="ghost" onClick={stepBack}>{t.common.back}</Button>
       <Button variant="primary" class="grow" onClick={() => confirm(step)}>{t.importer.import}</Button>
     </>}>
-      {diff.kept.length > 0 && <p class="field-hint">{t.importer.kept(diff.kept.length)}</p>}
-      {changes.length ? (
-        <ul class="plain-list import-list">
-          {changes.slice(0, 60).map(({ e, isNew }) => (
-            <li key={e.id}>
-              <span class={`badge ${isNew ? 'badge-new' : ''}`}>{isNew ? t.importer.new : t.importer.changed}</span>
-              <span class="grow">
-                <strong>{e.title}</strong>
-                <span>{joinFacts([`${e.repeat === 'once' ? shortDate(e.date) : t.common.weekdaysShort[e.weekday]} ${clockTime(e.start)}–${clockTime(e.end)}`, e.weeks && t.importer.weeks(formatRanges(e.weeks, t.format.parityRange)), e.location])}</span>
-              </span>
-              {step.source !== 'ics' && changes.length > 1 && (
-                <button type="button" class="icon-btn" aria-label={t.importer.leaveOut(e.title)} onClick={() => leaveOut(e)}><Icon name="close" size={18} /></button>
-              )}
-            </li>
-          ))}
-          {changes.length > 60 && <li class="muted">{t.importer.andMore(changes.length - 60)}</li>}
-        </ul>
-      ) : <p>{t.importer.nothingChanged}</p>}
-      {conflicts.length > 0 && (
-        <div class="notice notice-warn">
-          <strong>{t.importer.overlapTitle}</strong>
-          <ul class="plain-list compact">{conflicts.slice(0, 6).map(c => <li>{t.importer.conflict(shortDate(c.date), c.first, c.second)}</li>)}</ul>
-        </div>
-      )}
-      {diff.removed.length > 0 && (
-        <label class="check-row">
-          <input type="checkbox" checked={removeMissing} onChange={e => setRemoveMissing((e.target as HTMLInputElement).checked)} />
-          <span>{t.importer.removeEarlier(diff.removed.length)}</span>
-        </label>
-      )}
-      <p class="field-hint">{t.importer.undoLater}</p>
+      <div data-step="preview">
+        {diff.kept.length > 0 && <p class="field-hint">{t.importer.kept(diff.kept.length)}</p>}
+        {changes.length ? (
+          <ul class="plain-list import-list">
+            {changes.slice(0, 60).map(({ e, isNew }) => (
+              <li key={e.id}>
+                <span class={`badge ${isNew ? 'badge-new' : ''}`}>{isNew ? t.importer.new : t.importer.changed}</span>
+                <span class="grow">
+                  <strong>{e.title}</strong>
+                  <span>{joinFacts([`${e.repeat === 'once' ? shortDate(e.date) : t.common.weekdaysShort[e.weekday]} ${clockTime(e.start)}–${clockTime(e.end)}`, e.weeks && t.importer.weeks(formatRanges(e.weeks, t.format.parityRange)), e.location])}</span>
+                </span>
+                {step.source !== 'ics' && changes.length > 1 && (
+                  <button type="button" class="icon-btn" aria-label={t.importer.leaveOut(e.title)} onClick={() => leaveOut(e)}><Icon name="close" size={18} /></button>
+                )}
+              </li>
+            ))}
+            {changes.length > 60 && <li class="muted">{t.importer.andMore(changes.length - 60)}</li>}
+          </ul>
+        ) : <p>{t.importer.nothingChanged}</p>}
+        {conflicts.length > 0 && (
+          <div class="notice notice-warn">
+            <strong>{t.importer.overlapTitle}</strong>
+            <ul class="plain-list compact">{conflicts.slice(0, 6).map(c => <li>{t.importer.conflict(shortDate(c.date), c.first, c.second)}</li>)}</ul>
+          </div>
+        )}
+        {diff.removed.length > 0 && (
+          <label class="check-row">
+            <input type="checkbox" checked={removeMissing} onChange={e => setRemoveMissing((e.target as HTMLInputElement).checked)} />
+            <span>{t.importer.removeEarlier(diff.removed.length)}</span>
+          </label>
+        )}
+        <p class="field-hint">{t.importer.undoLater}</p>
+      </div>
     </Sheet>
   );
 }

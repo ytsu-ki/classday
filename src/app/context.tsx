@@ -10,10 +10,12 @@ export type SheetSpec =
   /** Add a to-do. */
   | { type: 'capture'; due?: DateKey }
   | { type: 'item'; id: string }
-  | { type: 'note'; id: string | null }
-  /** Add (id null) or change an event; `start` comes from a tapped stretch of free time. */
-  | { type: 'event'; id: string | null; day?: DateKey; start?: number }
+  | { type: 'note'; id: string | null; notebookId?: string | null }
+  | { type: 'notebook'; id: string | null }
+  /** Add (id null) or change an event; `start` and `end` come from a tapped or dragged slot. */
+  | { type: 'event'; id: string | null; day?: DateKey; start?: number; end?: number }
   | { type: 'fixed'; eventId: string; day: DateKey }
+  | { type: 'overlap'; day: DateKey; eventIds: string[] }
   | { type: 'import' }
   | { type: 'class-times' }
   | { type: 'restore'; report: NormalizeReport; source: string }
@@ -25,9 +27,13 @@ export interface Ui {
   /** The day shown on the Today screen. */
   day: DateKey;
   showDay: (day: DateKey) => void;
+  sheets: readonly SheetSpec[];
   sheet: SheetSpec | null;
   open: (sheet: SheetSpec) => void;
+  push: (sheet: SheetSpec) => void;
+  pop: () => void;
   close: () => void;
+  registerBack: (handler: () => boolean) => () => void;
 }
 
 export const StoreContext = createContext<Store | null>(null);

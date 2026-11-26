@@ -10,7 +10,7 @@ export const COURSE_COLORS = 10;
 /** The longest break between two periods that counts as a passing period, for walking between rooms. */
 export const PASSING_MAX = 30;
 
-export interface Axis { height: number; y: (minute: number) => number }
+export interface Axis { height: number; y: (minute: number) => number; minuteAt: (y: number) => number }
 
 /**
  * The week grid's time axis. Periods and everything on the plan get full height and the stretches
@@ -41,7 +41,33 @@ export function weekAxis(range: Interval, dense: Interval[], closed: Interval[] 
     }
     return y;
   };
-  return { height: Math.round(y), y: minute => Math.round(at(minute)) };
+  const minuteAt = (py: number) => {
+    if (py <= 0) return range.start;
+    if (py >= y) return range.end;
+    for (let i = 1; i < points.length; i++) {
+      const [m1, y1] = points[i];
+      const [m0, y0] = points[i - 1];
+      if (y1 > y0 && py <= y1) return Math.round(m0 + ((py - y0) * (m1 - m0)) / (y1 - y0));
+    }
+    return range.end;
+  };
+  return { height: Math.round(y), y: minute => Math.round(at(minute)), minuteAt };
+}
+
+/**
+ * Snap a tapped minute on the week grid to a sensible start time: the tapped period (or a period
+ * starting within 15 minutes), else a 30-minute boundary.
+ */
+export function slotStartAt(minute: number, periods: readonly Period[], range: Interval): number {
+  const m = Math.max(range.start, Math.min(23 * 60, minute, range.end));
+  if (periods.length > 0) {
+    const inside = periods.find(p => p.start <= m && m < p.end);
+    if (inside) return inside.start;
+    const upcoming = periods.find(p => p.start > m && p.start - m <= 15);
+    if (upcoming) return upcoming.start;
+  }
+  const ceiling = Math.min(23 * 60, Math.max(range.start, range.end - 30));
+  return Math.max(range.start, Math.min(ceiling, Math.floor(m / 30) * 30));
 }
 
 /**
@@ -79,6 +105,29 @@ export function inLanes<T>(entries: { value: T; start: number; end: number }[]):
     groupEnd = Math.max(groupEnd, e.end);
   }
   close();
+  return out;
+}
+
+export interface WeekCluster<T> {
+  primary: { value: T; start: number; end: number };
+  entries: { value: T; start: number; end: number }[];
+  start: number;
+  end: number;
+}
+
+/** Group connected overlapping events in one day into a full-width card + "+N" cluster. */
+export function weekClusters<T>(entries: { value: T; start: number; end: number }[]): WeekCluster<T>[] {
+  const sorted = [...entries].sort((a, b) => a.start - b.start || b.end - a.end);
+  const out: WeekCluster<T>[] = [];
+  for (const entry of sorted) {
+    const prev = out.at(-1);
+    if (!prev || entry.start >= prev.end) {
+      out.push({ primary: entry, entries: [entry], start: entry.start, end: entry.end });
+    } else {
+      prev.entries.push(entry);
+      prev.end = Math.max(prev.end, entry.end);
+    }
+  }
   return out;
 }
 

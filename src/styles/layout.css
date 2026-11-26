@@ -3,6 +3,18 @@
   min-height: 100vh;
 }
 
+.app::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--safe-top);
+  background: var(--bg);
+  z-index: 15;
+  pointer-events: none;
+}
+
 .main {
   width: 100%;
   max-width: 720px;
@@ -15,11 +27,69 @@
   outline: none;
 }
 
+@media (max-width: 899px) {
+  .main:has(> .today),
+  .main:has(> .week) {
+    padding-top: calc(var(--safe-top) + var(--space-3));
+    padding-bottom: calc(var(--safe-bottom) + var(--nav-height) + var(--space-4));
+  }
+}
+
 .screen {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
   animation: screen-in var(--medium) var(--ease);
+}
+
+.screen.today,
+.screen.week {
+  gap: var(--space-3);
+}
+
+.today .page-head,
+.week .page-head {
+  padding-top: 0;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.today .page-head h1,
+.week .page-head h1 {
+  font-size: 1.45rem;
+  line-height: 1.15;
+}
+
+.today .eyebrow,
+.week .eyebrow {
+  margin-bottom: 2px;
+  font-size: var(--fs-xs);
+}
+
+.today .page-actions,
+.week .page-actions {
+  gap: 2px;
+}
+
+.today .page-actions .icon-btn,
+.week .page-actions .icon-btn {
+  width: 38px;
+  height: 38px;
+}
+
+.today .page-actions .btn-sm,
+.week .page-actions .btn-sm {
+  min-height: 34px;
+  padding: 0 11px;
+}
+
+@media (pointer: coarse) {
+  .today .page-actions .icon-btn,
+  .week .page-actions .icon-btn,
+  .today .page-actions .btn-sm,
+  .week .page-actions .btn-sm {
+    min-height: 36px;
+  }
 }
 
 @keyframes screen-in {
@@ -52,6 +122,18 @@
   align-items: center;
   gap: var(--space-1);
   flex: none;
+}
+
+@media (max-width: 440px) {
+  .page-head {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: var(--space-2);
+  }
+
+  .page-actions {
+    margin-left: auto;
+  }
 }
 
 .eyebrow {
@@ -143,6 +225,10 @@
       calc(var(--safe-right) + var(--space-10))
       var(--space-10)
       calc(var(--safe-left) + var(--rail-width) + var(--space-10));
+  }
+
+  .main:has(> .week) {
+    max-width: min(100%, 1440px);
   }
 
   .nav {

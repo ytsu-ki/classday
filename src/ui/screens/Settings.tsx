@@ -7,12 +7,13 @@ import { settingsProblem } from '../../domain/schema';
 import type { LanguageChoice, Reminders, Settings, ThemeMode } from '../../domain/types';
 import { language as shown, LANGUAGE_NAMES, problemText, t } from '../../i18n';
 import { appVersion } from '../../platform/native';
-import { notificationPermission, requestNotifications, sendTestNotification, type NotificationPermission } from '../../platform/notifications';
+import { requestNotifications, sendTestNotification } from '../../platform/notifications';
 import { AccentPicker } from '../components/AccentPicker';
 import { Button, Field, IconButton, Segmented, Switch } from '../components/controls';
 import { Icon, type IconName } from '../components/Icon';
 import { TimeField } from '../components/TimeField';
 import { clockTime, duration, joinFacts } from '../format';
+import { useNotificationPermission } from '../reminders';
 import { labelFor } from '../theme/accent';
 
 /** Settings is a short menu; each group opens its own page, so no page is crowded. */
@@ -129,8 +130,7 @@ export function RemindersScreen() {
   const { data } = useAppState();
   const store = useStore();
   const r = data.reminders;
-  const [permission, setPermission] = useState<NotificationPermission | null>(null);
-  useEffect(() => { notificationPermission().then(setPermission); }, []);
+  const [permission, setPermission] = useNotificationPermission();
   const change = (patch: Partial<Reminders>) => store.act(d => act.setReminders(d, patch), { undoable: false });
   const allow = async () => {
     setPermission(await requestNotifications());

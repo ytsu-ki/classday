@@ -36,8 +36,7 @@ export function ItemSheet({ id }: { id: string }) {
     e?.preventDefault();
     const title = draft.title.trim();
     if (!title) return setError(t.common.giveName);
-    store.act(d => act.updateItem(d, id, { ...draft, title }), { message: t.item.saved });
-    ui.close();
+    if (store.act(d => act.updateItem(d, id, { ...draft, title }), { message: t.item.saved })) ui.close();
   };
 
   const page = dates.page;
@@ -73,7 +72,7 @@ export function ItemSheet({ id }: { id: string }) {
           {draft.details && /https?:\/\//.test(draft.details) && <Linkified text={draft.details} />}
           {error && <p class="field-error" role="alert">{error}</p>}
           <div class="status-actions">
-            <Button size="sm" variant="danger" icon="trash" onClick={() => ui.open({
+            <Button size="sm" variant="danger" icon="trash" onClick={() => ui.push({
               type: 'confirm', title: t.item.deleteTitle, danger: true, confirm: t.common.delete,
               message: t.item.deleteMessage(original.title),
               onConfirm: () => store.act(d => act.deleteItem(d, id), { message: t.item.deleted }),

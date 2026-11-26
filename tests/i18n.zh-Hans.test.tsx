@@ -54,7 +54,11 @@ function busyPlanner(language: LanguageChoice): PlannerData {
     newItem('给导师发邮件', { id: 'mail', urgent: true }),
     newItem('交表', { id: 'soon', due: TODAY, dueTime: '18:00', important: true, urgent: true }),
   ];
-  d.notes = [{ id: 'n1', text: '期末复习计划\n先整理笔记', createdAt: '2026-10-12T08:00:00.000Z', updatedAt: '2026-10-12T08:00:00.000Z' }];
+  d.notebooks = [{ id: 'nb1', name: '高等数学笔记', color: 3, createdAt: '2026-10-12T08:00:00.000Z', updatedAt: '2026-10-12T08:00:00.000Z' }];
+  d.notes = [
+    { id: 'n1', notebookId: 'nb1', text: '期末复习计划\n先整理笔记', createdAt: '2026-10-12T08:00:00.000Z', updatedAt: '2026-10-12T08:00:00.000Z' },
+    { id: 'n2', text: '随手记灵感\n记得买实验本', createdAt: '2026-10-12T09:00:00.000Z', updatedAt: '2026-10-12T09:00:00.000Z' },
+  ];
   return d;
 }
 
@@ -106,6 +110,8 @@ describe('the interface in Simplified Chinese', () => {
 
     nav('本周');
     check('week');
+    fireEvent.click(document.querySelector('.wk-col[data-day="2026-10-15"]') as HTMLElement, { clientY: 0 });
+    check('week draft');
     nav('待办');
     check('to-dos');
     header('添加待办');
@@ -121,7 +127,16 @@ describe('the interface in Simplified Chinese', () => {
     fireEvent.click(screen.getByRole('radio', { name: '已完成' }));
     check('done');
     nav('笔记');
-    check('notes');
+    check('notes shelf');
+    header('新建笔记本');
+    check('notebook sheet');
+    close();
+    fireEvent.click(screen.getByRole('button', { name: /高等数学笔记/ }));
+    check('notebook detail');
+    fireEvent.click(screen.getByRole('button', { name: /期末复习计划/ }));
+    check('note sheet');
+    close();
+    fireEvent.click(screen.getByRole('button', { name: '返回书架' }));
     nav('设置');
     check('settings');
     const back = () => fireEvent.click(screen.getByRole('button', { name: '返回设置' }));
@@ -151,7 +166,7 @@ describe('the interface in Simplified Chinese', () => {
     check('data');
 
     expect(seen).toEqual({});
-  });
+  }, 15_000);
 
   it('switches language from Settings and back', () => {
     const store = mount(busyPlanner('en'));

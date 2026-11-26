@@ -1,9 +1,9 @@
-import { ACCENTS, LANGUAGES, LIMITS, newItem, THEMES } from './defaults';
+import { ACCENTS, LANGUAGES, LIMITS, THEMES } from './defaults';
 import { noteText } from './notes';
 import { periodsInUse, periodsProblem, retimeClasses } from './periods';
 import { ProblemError } from './problems';
 import { nowIso, uid } from './time';
-import type { AccentId, ClassPeriod, DateKey, FixedEvent, Item, LanguageChoice, Note, PlannerData, Reminders, Settings, ThemeMode } from './types';
+import type { AccentId, ClassPeriod, DateKey, FixedEvent, Item, LanguageChoice, Note, Notebook, PlannerData, Reminders, Settings, ThemeMode } from './types';
 
 /**
  * State transitions. Each one mutates a draft copy that the store has already cloned,
@@ -55,26 +55,38 @@ export function setReminders(d: PlannerData, patch: Partial<Reminders>) {
 export function deleteItem(d: PlannerData, id: string) {
   findItem(d, id);
   d.items = d.items.filter(i => i.id !== id);
-  for (const note of d.notes) if (note.itemId === id) delete note.itemId;
 }
 
-/** Saves a note's title and body as one text (see `noteText`). */
-export function saveNote(d: PlannerData, id: string | null, title: string, content: string): Note {
+/** Saves a note's title, body and optional notebook assignment. */
+export function saveNote(d: PlannerData, id: string | null, title: string, content: string, notebookId?: string | null): Note {
   const body = noteText(title, content);
   if (!body.trim()) throw new ActionError({ code: 'note-empty' });
   if (body.length > LIMITS.text) throw new ActionError({ code: 'note-too-long' });
   const at = nowIso();
+  const resolvedBook = notebookId && d.notebooks.some(b => b.id === notebookId) ? notebookId : undefined;
   if (id) {
     const note = d.notes.find(n => n.id === id);
     if (!note) throw new ActionError({ code: 'note-gone' });
     note.text = body;
     note.updatedAt = at;
+    if (notebookId !== undefined) {
+      if (resolvedBook) note.notebookId = resolvedBook;
+      else delete note.notebookId;
+    }
+    if (note.notebookId) {
+      const book = d.notebooks.find(b => b.id === note.notebookId);
+      if (book) book.updatedAt = at;
+    }
     return note;
   }
   if (d.notes.length >= LIMITS.notes) throw new ActionError({ code: 'too-many-notes' });
-  const note: Note = { id: uid(), text: body, createdAt: at, updatedAt: at };
+  const note: Note = { id: uid(), text: body, createdAt: at, updatedAt: at, ...(resolvedBook ? { notebookId: resolvedBook } : {}) };
   d.notes.unshift(note);
   d.noteDraft = '';
+  if (resolvedBook) {
+    const book = d.notebooks.find(b => b.id === resolvedBook);
+    if (book) book.updatedAt = at;
+  }
   return note;
 }
 
@@ -82,16 +94,47 @@ export function deleteNote(d: PlannerData, id: string) {
   d.notes = d.notes.filter(n => n.id !== id);
 }
 
-/** Turn a note into a to-do; the whole note becomes its details. */
-export function noteToTodo(d: PlannerData, noteId: string): Item {
+export function moveNote(d: PlannerData, noteId: string, notebookId: string | null): Note {
   const note = d.notes.find(n => n.id === noteId);
   if (!note) throw new ActionError({ code: 'note-gone' });
-  const linked = note.itemId && d.items.find(i => i.id === note.itemId);
-  if (linked) return linked;
-  const firstLine = note.text.trim().split('\n')[0].slice(0, LIMITS.title).trim();
-  const item = addItem(d, newItem(firstLine || 'Note', { details: note.text.trim() }));
-  note.itemId = item.id;
-  return item;
+  const at = nowIso();
+  if (notebookId) {
+    const book = d.notebooks.find(b => b.id === notebookId);
+    if (!book) throw new ActionError({ code: 'notebook-gone' });
+    note.notebookId = book.id;
+    book.updatedAt = at;
+  } else {
+    delete note.notebookId;
+  }
+  note.updatedAt = at;
+  return note;
+}
+
+export function saveNotebook(d: PlannerData, id: string | null, name: string, color: number): Notebook {
+  const trimmed = name.trim().slice(0, LIMITS.notebookName);
+  if (!trimmed) throw new ActionError({ code: 'notebook-empty' });
+  const safeColor = ((Math.trunc(color) % 10) + 10) % 10;
+  const at = nowIso();
+  if (id) {
+    const book = d.notebooks.find(b => b.id === id);
+    if (!book) throw new ActionError({ code: 'notebook-gone' });
+    book.name = trimmed;
+    book.color = safeColor;
+    book.updatedAt = at;
+    return book;
+  }
+  if (d.notebooks.length >= LIMITS.notebooks) throw new ActionError({ code: 'too-many-notebooks' });
+  const book: Notebook = { id: uid(), name: trimmed, color: safeColor, createdAt: at, updatedAt: at };
+  d.notebooks.unshift(book);
+  return book;
+}
+
+/** Deletes a notebook and keeps all its notes in Quick notes (uncategorized). */
+export function deleteNotebook(d: PlannerData, id: string) {
+  const book = d.notebooks.find(b => b.id === id);
+  if (!book) throw new ActionError({ code: 'notebook-gone' });
+  d.notebooks = d.notebooks.filter(b => b.id !== id);
+  for (const note of d.notes) if (note.notebookId === id) delete note.notebookId;
 }
 
 export function saveEvent(d: PlannerData, event: FixedEvent) {

@@ -17,8 +17,9 @@ import java.util.regex.Pattern;
  *
  * Every write goes to a temporary file that is flushed to the device and then renamed over
  * the current file, so a crash or power loss leaves either the old or the new version, never a
- * half-written one. The version before each write is kept as state.prev.json, and one copy per
- * day is kept in snapshots/ for recovery. Plain Java so it can be tested on the JVM.
+ * half-written one. The version before each write is kept as state.prev.json (the old current
+ * file, renamed), and one copy per day is kept in snapshots/ for recovery. Plain Java so it can
+ * be tested on the JVM.
  */
 final class StateFiles {
     static final int MAX_BYTES = 20 * 1024 * 1024;
@@ -51,13 +52,11 @@ final class StateFiles {
         byte[] bytes = encode(data);
         ensureDir(dir);
         File file = current();
-        if (file.exists()) {
-            File copy = new File(dir, "state.prev.json.tmp");
-            copyFile(file, copy);
-            replace(copy, previous());
-        }
         File temporary = new File(dir, "state.json.tmp");
         writeSynced(temporary, bytes);
+        // The current file becomes the previous one by a rename, with nothing copied. A crash
+        // between the two renames leaves no current file, and read() then uses the previous one.
+        if (file.exists()) replace(file, previous());
         replace(temporary, file);
     }
 
@@ -113,14 +112,6 @@ final class StateFiles {
     private static void writeSynced(File file, byte[] bytes) throws IOException {
         try (FileOutputStream output = new FileOutputStream(file)) {
             output.write(bytes);
-            output.flush();
-            output.getFD().sync();
-        }
-    }
-
-    private static void copyFile(File from, File to) throws IOException {
-        try (InputStream input = new FileInputStream(from); FileOutputStream output = new FileOutputStream(to)) {
-            copy(input, output);
             output.flush();
             output.getFD().sync();
         }

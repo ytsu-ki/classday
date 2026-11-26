@@ -1,4 +1,5 @@
 import { CHINESE } from './notice.zh-Hans';
+import { BLOCK_GAP } from './periods';
 import type { Interval } from './schedule';
 import { addDays, dateOf, dayKey, toClock, toMinutes, weekdayOf, weekOf } from './time';
 import type { Clock, DateKey } from './types';
@@ -286,6 +287,8 @@ export function eventEnd(start: number, notice: Pick<Notice, 'end' | 'minutes'>,
   if (notice.end && toMinutes(notice.end) > start) return toMinutes(notice.end);
   if (notice.minutes) return cap(start + notice.minutes);
   const i = periods.findIndex(p => p.start === start);
-  if (i >= 0 && i + 1 < periods.length) return periods[i + 1].end;
+  // The next period only when it follows in the same block, never across lunch or dinner.
+  const next = i >= 0 ? periods[i + 1] : undefined;
+  if (next && next.start >= periods[i].end && next.start - periods[i].end <= BLOCK_GAP) return next.end;
   return cap(start + (periods.length >= 2 ? periods[1].end - periods[0].start : 90));
 }

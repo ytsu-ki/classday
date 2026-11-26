@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { courseColors, DENSE, inLanes, passingBreaks, periodRows, semesterWeek, SPARSE, weekAxis } from '../src/ui/weekGrid';
-import { data, weekly, withClassTimes } from './helpers';
+import { createDraftSlot, resizeDraftSlot } from '../src/ui/draftSlot';
+import { courseColors, DENSE, inLanes, passingBreaks, periodRows, semesterWeek, slotStartAt, SPARSE, weekAxis, weekClusters } from '../src/ui/weekGrid';
+import { data, TODAY, weekly, withClassTimes } from './helpers';
 
 /** Positions are whole pixels, so allow one pixel of rounding. */
 const near = (actual: number, expected: number) => expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1);
@@ -82,6 +83,26 @@ describe('week grid colors and periods', () => {
     expect(rows[11]).toEqual({ n: 12, start: 21 * 60 + 15, end: 22 * 60 });
   });
 
+  it('groups overlapping events into full-width clusters and snaps empty taps', () => {
+    const clusters = weekClusters([
+      { value: 'a', start: 600, end: 700 },
+      { value: 'b', start: 630, end: 720 },
+      { value: 'c', start: 710, end: 750 },
+      { value: 'd', start: 840, end: 900 },
+    ]);
+    expect(clusters).toHaveLength(2);
+    expect(clusters[0].primary.value).toBe('a');
+    expect(clusters[0].entries.map(e => e.value)).toEqual(['a', 'b', 'c']);
+    expect([clusters[0].start, clusters[0].end]).toEqual([600, 750]);
+    expect(clusters[1].entries.map(e => e.value)).toEqual(['d']);
+
+    const rows = periodRows(withClassTimes());
+    const axis = weekAxis({ start: 480, end: 1380 }, rows, passingBreaks(rows, []));
+    expect(Math.abs(axis.minuteAt(axis.y(625)) - 625)).toBeLessThanOrEqual(2);
+    expect(slotStartAt(620, rows, { start: 480, end: 1380 })).toBe(610);
+    expect(slotStartAt(765, [], { start: 480, end: 1380 })).toBe(750);
+  });
+
   it('numbers the weeks of the semester', () => {
     const d = data();
     expect(semesterWeek(d, '2026-10-12')).toBeNull();
@@ -89,5 +110,24 @@ describe('week grid colors and periods', () => {
     expect(semesterWeek(d, '2026-09-07')).toBe(1);
     expect(semesterWeek(d, '2026-10-12')).toBe(6);
     expect(semesterWeek(d, '2026-08-31')).toBeNull();
+  });
+
+  it('creates and resizes dashed draft slots with period snapping and 30m minimum clamp', () => {
+    const rows = periodRows(withClassTimes());
+    const range = { start: 480, end: 1380 };
+    const slot = createDraftSlot(TODAY, 620, rows, range);
+    // Snaps to period 3 start (10:10 = 610) and extends through double-period end (11:50 = 710).
+    expect(slot).toEqual({ day: TODAY, start: 610, end: 710 });
+
+    // Resizing end handle near period 6 end snaps cleanly to 920 (15:20), while enforcing 30m min.
+    expect(resizeDraftSlot(slot, 'end', 915, rows, range).end).toBe(920);
+    expect(resizeDraftSlot(slot, 'end', 612, rows, range).end).toBe(640);
+    expect(resizeDraftSlot(slot, 'start', 705, rows, range).start).toBe(680);
+
+    // Without periods, falls back to 15-minute increments and clamps within the range.
+    const freeSlot = createDraftSlot(TODAY, 910, [], range);
+    expect(freeSlot).toEqual({ day: TODAY, start: 900, end: 990 });
+    expect(resizeDraftSlot(freeSlot, 'end', 971, [], range).end).toBe(975);
+    expect(resizeDraftSlot(freeSlot, 'start', 400, [], range).start).toBe(480);
   });
 });

@@ -4,8 +4,10 @@ import { boot, Saver } from '../src/app/repository';
 import { Store } from '../src/app/store';
 import * as act from '../src/domain/actions';
 import { initialData } from '../src/domain/defaults';
+import { parseData } from '../src/domain/schema';
 import { browserBackend, type StorageBackend } from '../src/platform/storage';
-import { todo } from './helpers';
+import { applyImport } from '../src/timetable/merge';
+import { once, todo } from './helpers';
 
 class MemoryStorage implements Storage {
   private map = new Map<string, string>();
@@ -71,6 +73,19 @@ describe('starting up', () => {
     const days = (await backend.listSnapshots()).map(s => s.day);
     expect(days).toEqual(['2026-10-10', '2026-10-09', '2026-10-08', '2026-10-07', '2026-10-06', '2026-10-05', '2026-10-04']);
   });
+
+  it('migrates legacy backups without notebooks and drops obsolete note itemId cleanly', () => {
+    const base = initialData() as unknown as Record<string, unknown>;
+    delete base.notebooks;
+    const legacy = JSON.stringify({
+      ...base,
+      notes: [{ id: 'n1', text: 'Old note', itemId: 'todo-1', createdAt: '2026-10-10T08:00:00.000Z', updatedAt: '2026-10-10T08:00:00.000Z' }],
+    });
+    const report = parseData(legacy);
+    expect(report.dropped).toBe(0);
+    expect(report.data.notebooks).toEqual([]);
+    expect(report.data.notes[0]).toEqual({ id: 'n1', text: 'Old note', createdAt: '2026-10-10T08:00:00.000Z', updatedAt: '2026-10-10T08:00:00.000Z' });
+  });
 });
 
 describe('saving', () => {
@@ -85,9 +100,13 @@ describe('saving', () => {
     };
     const statuses: string[] = [];
     const saver = new Saver(backend, s => statuses.push(s), () => '2026-10-13', 100);
+    const stringify = vi.spyOn(JSON, 'stringify');
     saver.schedule(initialData());
     saver.schedule({ ...initialData(), noteDraft: 'latest' });
+    // Nothing is put into text until a write happens.
+    expect(stringify).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(150);
+    stringify.mockRestore();
     expect(statuses).toEqual(['saving', 'failed']);
     fail = false;
     await vi.advanceTimersByTimeAsync(2500);
@@ -121,6 +140,16 @@ describe('store', () => {
     store.act(d => act.saveNote(d, null, '', ''));
     expect(store.get().data).toBe(before);
     expect(store.get().toast).toMatchObject({ tone: 'error', message: 'Write something first.' });
+  });
+
+  it('refuses an import that would overfill the timetable with a message, not a crash', () => {
+    const data = initialData();
+    data.events = Array.from({ length: 2000 }, (_, i) => once(`Event ${i}`, '2026-10-20', '09:00', '10:00'));
+    const store = new Store(data, null, clock);
+    const lesson = once('Lesson', '2026-10-21', '09:00', '10:00', { sourceKey: 'lesson', importGroup: 'ics-x' });
+    expect(store.act(d => applyImport(d, [lesson], 'ics-x', true))).toBeUndefined();
+    expect(store.get().data).toBe(data);
+    expect(store.get().toast?.tone).toBe('error');
   });
 
   it('rolls over to a new day without changing the data', () => {

@@ -12,7 +12,7 @@ const ROW = 40;
  * phone set to 12-hour time. Replaces <input type="time">, whose Android clock dial is awkward on
  * a phone. Minutes move in fives; a time imported off that step keeps its own minute.
  */
-export function TimeField({ id, value, onChange, label, optional, disabled, start = '09:00' }: {
+export function TimeField({ id, value, onChange, label, optional, disabled, start = '09:00', open: controlledOpen, onOpenChange }: {
   id?: string;
   value: string;
   onChange: (clock: string) => void;
@@ -22,8 +22,16 @@ export function TimeField({ id, value, onChange, label, optional, disabled, star
   disabled?: boolean;
   /** Where the wheels start when there is no time yet. */
   start?: string;
+  /** Optional controlled expansion so paired fields can share one drawer slot cleanly. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
   const panelId = useId();
   const latest = useRef(value);
   latest.current = value;
@@ -106,28 +114,52 @@ function Wheel({ values, value, onChange, label, format = String }: {
   const index = Math.max(0, values.indexOf(value));
   const [centered, setCentered] = useState(index);
   const settle = useRef(0);
+  const scrolling = useRef(false);
+  const latest = useRef({ values, value, onChange });
+  latest.current = { values, value, onChange };
 
-  // Follow the value when it changes from outside the wheel (and on opening).
+  // Follow the value when it changes from outside the wheel (and on opening), without fighting scroll-snap.
   useEffect(() => {
     const el = ref.current;
-    if (el && Math.round(el.scrollTop / ROW) !== index) el.scrollTop = index * ROW;
+    if (el && !scrolling.current && Math.round(el.scrollTop / ROW) !== index) el.scrollTop = index * ROW;
     setCentered(index);
   }, [index]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !('onscrollend' in el)) return;
+    const onScrollEnd = () => {
+      clearTimeout(settle.current);
+      scrolling.current = false;
+      const i = Math.max(0, Math.min(latest.current.values.length - 1, Math.round(el.scrollTop / ROW)));
+      setCentered(i);
+      if (latest.current.values[i] !== latest.current.value) latest.current.onChange(latest.current.values[i]);
+    };
+    el.addEventListener('scrollend', onScrollEnd);
+    return () => el.removeEventListener('scrollend', onScrollEnd);
+  }, []);
+
   useEffect(() => () => clearTimeout(settle.current), []);
 
   const choose = (i: number) => {
     const next = Math.max(0, Math.min(values.length - 1, i));
     clearTimeout(settle.current);
+    scrolling.current = false;
     setCentered(next);
+    if (ref.current) ref.current.scrollTop = next * ROW;
     if (values[next] !== value) onChange(values[next]);
   };
   const onScroll = () => {
     const el = ref.current;
     if (!el) return;
+    scrolling.current = true;
     const i = Math.max(0, Math.min(values.length - 1, Math.round(el.scrollTop / ROW)));
     setCentered(i);
     clearTimeout(settle.current);
-    settle.current = window.setTimeout(() => { if (values[i] !== value) onChange(values[i]); }, 140);
+    settle.current = window.setTimeout(() => {
+      scrolling.current = false;
+      if (values[i] !== value) onChange(values[i]);
+    }, 140);
   };
   const onKeyDown = (e: KeyboardEvent) => {
     const step = { ArrowUp: -1, ArrowDown: 1, PageUp: -5, PageDown: 5 }[e.key];

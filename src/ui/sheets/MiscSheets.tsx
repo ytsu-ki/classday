@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { useAppState, useStore, useUi } from '../../app/context';
 import { services } from '../../app/services';
 import * as act from '../../domain/actions';
@@ -6,44 +6,85 @@ import { LIMITS } from '../../domain/defaults';
 import { noteParts, noteText } from '../../domain/notes';
 import type { NormalizeReport } from '../../domain/schema';
 import { dayKey } from '../../domain/time';
-import { Button } from '../components/controls';
-import { Sheet } from '../components/Sheet';
 import { t } from '../../i18n';
+import { Button, Field, radioKeys } from '../components/controls';
+import { Icon } from '../components/Icon';
+import { Sheet } from '../components/Sheet';
 import { inlineDay, shortDate } from '../format';
+import { COURSE_COLORS } from '../weekGrid';
 import { Linkified } from './ItemSheet';
 
-export function NoteSheet({ id }: { id: string | null }) {
+const BOOK_COLORS = Array.from({ length: COURSE_COLORS }, (_, i) => i);
+
+export function NoteSheet({ id, notebookId }: { id: string | null; notebookId?: string | null }) {
   const { data, today } = useAppState();
   const store = useStore();
   const ui = useUi();
   const note = id ? data.notes.find(n => n.id === id) : undefined;
   const [parts, setParts] = useState(() => noteParts(note?.text ?? data.noteDraft));
+  const [selectedBook, setSelectedBook] = useState<string | null>(() => (note ? (note.notebookId ?? null) : (notebookId ?? null)));
   const [editing, setEditing] = useState(!note);
   const [error, setError] = useState('');
   const body = useRef<HTMLTextAreaElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What a new note holds right now, kept as the draft until it is saved as a note.
+  const latest = useRef(parts);
+  latest.current = parts;
+  const saved = useRef(false);
+  const keepDraft = () => {
+    if (id || saved.current) return;
+    const draft = noteText(latest.current.title, latest.current.body);
+    if (draft !== store.get().data.noteDraft) store.act(d => { d.noteDraft = draft; }, { undoable: false });
+  };
   useEffect(() => {
     if (note) return;
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      const draft = noteText(parts.title, parts.body);
-      if (draft !== store.get().data.noteDraft) store.act(d => { d.noteDraft = draft; }, { undoable: false });
-    }, 500);
+    timer.current = setTimeout(keepDraft, 500);
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [parts]);
+  // Closing the sheet before the pause is over still keeps what was typed.
+  useEffect(() => keepDraft, []);
   if (id && !note) return null;
-  const linked = note?.itemId ? data.items.find(i => i.id === note.itemId) : undefined;
+
   const edit = (patch: Partial<typeof parts>) => { setParts({ ...parts, ...patch }); setError(''); };
   const save = (e?: Event) => {
     e?.preventDefault();
     if (!noteText(parts.title, parts.body)) return setError(t.problems['note-empty']());
-    store.act(d => act.saveNote(d, id, parts.title, parts.body), { message: t.capture.noteSaved });
+    // A note that can't be saved (too long, say) stays open with its text.
+    if (!store.act(d => act.saveNote(d, id, parts.title, parts.body, selectedBook), { message: t.capture.noteSaved })) return;
+    saved.current = true;
     ui.close();
   };
+  const chooseBook = (nextBook: string | null) => {
+    setSelectedBook(nextBook);
+    if (note && !editing) {
+      const targetName = nextBook ? (data.notebooks.find(b => b.id === nextBook)?.name ?? t.notes.quickNotes) : t.notes.quickNotes;
+      store.act(d => act.moveNote(d, note.id, nextBook), { message: t.notes.movedTo(targetName) });
+    }
+  };
+
   const shown = note && noteParts(note.text);
+  const currentBook = note ? (note.notebookId ?? null) : selectedBook;
+  const pickerLabel = (
+    <div class="notebook-picker" role="group" aria-label={t.noteSheet.notebook}>
+      <button type="button" class={`chip chip-book ${currentBook === null ? 'is-selected' : ''}`}
+        aria-pressed={currentBook === null} onClick={() => chooseBook(null)}>
+        {t.notes.quickNotes}
+      </button>
+      {data.notebooks.map(book => (
+        <button key={book.id} type="button" class={`chip chip-book ${currentBook === book.id ? 'is-selected' : ''}`}
+          aria-pressed={currentBook === book.id} onClick={() => chooseBook(book.id)}>
+          <span class={`book-dot course-${book.color}`} aria-hidden="true" />
+          <span>{book.name}</span>
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <Sheet title={note ? t.noteSheet.title : t.noteSheet.newNote} subtitle={note ? t.noteSheet.edited(inlineDay(dayKey(new Date(note.updatedAt)), today)) : t.common.draftsKept}
       onClose={ui.close} footer={editing ? <Button variant="primary" type="submit" form="note-form" class="grow">{t.capture.saveNote}</Button> : undefined}>
+      {data.notebooks.length > 0 && pickerLabel}
       {editing ? (
         <form id="note-form" class="note-editor" onSubmit={save}>
           <label class="sr-only" for="note-title">{t.noteSheet.noteTitle}</label>
@@ -65,14 +106,6 @@ export function NoteSheet({ id }: { id: string | null }) {
           </div>
           <div class="action-grid">
             <Button variant="soft" icon="edit" onClick={() => setEditing(true)}>{t.common.edit}</Button>
-            {linked ? (
-              <Button variant="soft" icon="check" onClick={() => ui.open({ type: 'item', id: linked.id })}>{t.noteSheet.openTodo}</Button>
-            ) : (
-              <Button variant="soft" icon="check" onClick={() => {
-                const item = store.act(d => act.noteToTodo(d, note!.id), { message: t.noteSheet.turnedIntoTodo });
-                if (item) ui.open({ type: 'item', id: item.id });
-              }}>{t.noteSheet.makeTodo}</Button>
-            )}
             <Button variant="danger" icon="trash" onClick={() => {
               store.act(d => act.deleteNote(d, note!.id), { message: t.noteSheet.deleted });
               ui.close();
@@ -84,11 +117,71 @@ export function NoteSheet({ id }: { id: string | null }) {
   );
 }
 
+/** Create, rename or recolor a notebook. Deleting keeps its notes safely in Quick notes. */
+export function NotebookSheet({ id }: { id: string | null }) {
+  const { data } = useAppState();
+  const store = useStore();
+  const ui = useUi();
+  const existing = id ? data.notebooks.find(b => b.id === id) : undefined;
+  const [name, setName] = useState(existing?.name ?? '');
+  const [color, setColor] = useState<number>(() => existing?.color ?? (data.notebooks.length % COURSE_COLORS));
+  const [error, setError] = useState('');
+  const formId = useId();
+  if (id && !existing) return null;
+
+  const count = existing ? data.notes.filter(n => n.notebookId === existing.id).length : 0;
+  const submit = (e?: Event) => {
+    e?.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return setError(t.problems['notebook-empty']());
+    const ok = store.act(d => act.saveNotebook(d, id, trimmed, color), { message: existing ? t.notes.notebookSaved : t.notes.notebookCreated });
+    if (ok) ui.close();
+  };
+
+  return (
+    <Sheet title={existing ? t.notes.editNotebook : t.notes.newNotebook} onClose={ui.close} footer={
+      <>
+        {existing && (
+          <Button variant="danger" icon="trash" onClick={() => ui.push({
+            type: 'confirm', title: t.notes.deleteNotebookTitle, danger: true, confirm: t.common.delete,
+            message: t.notes.deleteNotebookMessage(existing.name, count),
+            onConfirm: () => store.act(d => act.deleteNotebook(d, existing.id), { message: t.notes.notebookDeleted }),
+          })}>{t.common.delete}</Button>
+        )}
+        <Button variant="primary" type="submit" form={formId} class="grow">{t.common.save}</Button>
+      </>
+    }>
+      <form id={formId} class="form-stack" onSubmit={submit} noValidate>
+        <div class={`notebook-preview course-${color}`} aria-hidden="true">
+          <strong>{name.trim() || t.notes.notebookNamePlaceholder}</strong>
+          <span>{t.notes.notebookCount(count)}</span>
+        </div>
+        <Field label={t.notes.notebookName} error={error}>
+          {fid => <input id={fid} data-autofocus type="text" maxLength={LIMITS.notebookName} placeholder={t.notes.notebookNamePlaceholder}
+            value={name} onInput={e => { setName((e.target as HTMLInputElement).value); setError(''); }} />}
+        </Field>
+        <div class="field">
+          <span class="field-label">{t.notes.notebookColor}</span>
+          <div class="book-swatches" role="radiogroup" aria-label={t.notes.notebookColor}
+            onKeyDown={e => radioKeys(e, BOOK_COLORS, BOOK_COLORS.indexOf(color), setColor)}>
+            {BOOK_COLORS.map(c => (
+              <button key={c} type="button" role="radio" aria-checked={color === c} tabIndex={color === c ? 0 : -1}
+                class={`book-swatch course-${c}`} aria-label={t.notes.colorLabel(c)} onClick={() => setColor(c)}>
+                {color === c && <Icon name="check" size={18} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      </form>
+    </Sheet>
+  );
+}
+
 export function ConfirmSheet({ title, message, confirm, danger, onConfirm }: { title: string; message: string; confirm: string; danger?: boolean; onConfirm: () => void }) {
   const ui = useUi();
   return (
-    <Sheet title={title} onClose={ui.close} footer={<>
-      <Button variant="ghost" onClick={ui.close}>{t.common.cancel}</Button>
+    <Sheet title={title} onClose={ui.pop} footer={<>
+      <Button variant="ghost" onClick={ui.pop}>{t.common.cancel}</Button>
       <Button variant={danger ? 'danger' : 'primary'} class="grow" data-autofocus onClick={() => { ui.close(); onConfirm(); }}>{confirm}</Button>
     </>}>
       <p>{message}</p>
@@ -124,4 +217,3 @@ export function RestoreSheet({ report, source }: { report: NormalizeReport; sour
     </Sheet>
   );
 }
-

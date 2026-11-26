@@ -1,9 +1,12 @@
+import { App } from '@capacitor/app';
+import { useEffect, useState } from 'preact/hooks';
 import type { Store } from '../app/store';
 import { upcomingReminders } from '../domain/reminders';
 import { dayKey } from '../domain/time';
 import type { PlannerData } from '../domain/types';
 import { t } from '../i18n';
-import { notificationPermission, syncNotifications, type Notice } from '../platform/notifications';
+import { isNative } from '../platform/native';
+import { notificationPermission, syncNotifications, type Notice, type NotificationPermission } from '../platform/notifications';
 import { dueLabel, span } from './format';
 import { toMinutes } from '../domain/time';
 
@@ -29,9 +32,19 @@ export function reminderNotices(data: PlannerData, now: Date): Notice[] {
 export function keepRemindersInSync(store: Store): { stop: () => void; now: () => void } {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let last = '';
-  const run = async () => {
+  let stopped = false;
+  // One sync at a time: two at once could each cancel what the other had just scheduled.
+  let queue: Promise<void> = Promise.resolve();
+  const run = () => {
+    if (stopped) return;
+    queue = queue.then(sync, sync);
+  };
+  const sync = async () => {
+    if (stopped) return;
     const notices = reminderNotices(store.get().data, new Date());
-    const key = JSON.stringify([notices, t.lang, await notificationPermission()]);
+    const perm = await notificationPermission();
+    if (stopped) return;
+    const key = JSON.stringify([notices, t.lang, perm]);
     if (key === last) return;
     last = key;
     try {
@@ -41,13 +54,33 @@ export function keepRemindersInSync(store: Store): { stop: () => void; now: () =
     }
   };
   const soon = () => {
+    if (stopped) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => void run(), 1500);
   };
   const unsubscribe = store.subscribe(soon);
   soon();
   return {
-    stop: () => { if (timer) clearTimeout(timer); unsubscribe(); },
+    stop: () => { stopped = true; if (timer) clearTimeout(timer); unsubscribe(); },
     now: () => { if (timer) clearTimeout(timer); void run(); },
   };
+}
+
+/** Tracks notification permission and refreshes it when returning from system settings. */
+export function useNotificationPermission(): [NotificationPermission | null, (next: NotificationPermission) => void] {
+  const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => { void notificationPermission().then(p => { if (active) setPermission(p); }); };
+    refresh();
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const nativeHandle = isNative() ? App.addListener('resume', refresh) : null;
+    return () => {
+      active = false;
+      document.removeEventListener('visibilitychange', onVisible);
+      void nativeHandle?.then(h => h.remove()).catch(() => undefined);
+    };
+  }, []);
+  return [permission, setPermission];
 }
